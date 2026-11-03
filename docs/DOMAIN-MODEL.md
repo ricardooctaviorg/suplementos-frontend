@@ -16,6 +16,8 @@
 - **Deletion:** soft delete (`is_active = false`) for business entities. Stock movements are **never** deleted or edited.
 - **Enums:** Drizzle `pgEnum` (or `text` with `CHECK`, if easier migrations are preferred).
 - **Isolation:** every table with `tenant_id` requires it `NOT NULL`, with an index that starts with `tenant_id`.
+- **Foreign keys:** `ON DELETE NO ACTION` and `ON UPDATE NO ACTION` everywhere; no cascades. Tenants are suspended and business entities deactivated, never deleted.
+- **Emails:** stored lowercase, enforced with `CHECK (email = lower(email))`.
 
 ---
 
@@ -51,7 +53,7 @@ A client business.
 | `status` | enum `active` \| `suspended` | A suspended tenant cannot log in and its public catalog stops responding |
 | `created_at`, `updated_at` | timestamptz | |
 
-Constraints: `UNIQUE (slug)`, `CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')`.
+Constraints: `UNIQUE (slug)`, `CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')`, `CHECK (char_length(slug) BETWEEN 3 AND 40)`.
 List of reserved slugs (`app`, `api`, `admin`, `login`, `catalog`, `www`...) validated in the application layer.
 
 ### 3.2 `tenant_settings`
@@ -62,12 +64,12 @@ Customization and visual identity. 1:1 relationship with `tenants`.
 | `tenant_id` | uuid PK, FK → tenants | |
 | `display_name` | text | Name shown in the catalog (may differ from `tenants.name`) |
 | `logo_url` | text null | |
-| `color_primary` | text | Hex `#RRGGBB`, with `CHECK` |
-| `color_secondary` | text | |
-| `color_accent` | text | |
-| `color_background` | text | |
-| `color_text` | text | |
-| `currency` | char(3) | Default `MXN` |
+| `color_primary` | text | Hex `#RRGGBB` |
+| `color_secondary` | text | Hex `#RRGGBB` |
+| `color_accent` | text | Hex `#RRGGBB` |
+| `color_background` | text | Hex `#RRGGBB` |
+| `color_text` | text | Hex `#RRGGBB` |
+| `currency` | char(3) | Default `MXN`. ISO 4217 code |
 | `show_exact_stock` | boolean | Default `false`. If `false`, the catalog shows a stock status (in stock / low stock / out of stock) instead of the number |
 | `low_stock_threshold` | integer | Default `5`. Threshold for "low stock" |
 | `contact_phone` | text null | Useful for a local catalog (WhatsApp, phone) |
@@ -75,6 +77,8 @@ Customization and visual identity. 1:1 relationship with `tenants`.
 | `updated_at` | timestamptz | |
 
 Colors are injected as CSS variables in the frontend. They are validated against strict hex to prevent style injection.
+The five colors are `NOT NULL` without defaults: creating a tenant must supply the full palette.
+Constraints: `CHECK (color_* ~ '^#[0-9A-Fa-f]{6}$')` on each of the five colors, `CHECK (currency ~ '^[A-Z]{3}$')`, `CHECK (low_stock_threshold >= 0)`.
 
 ### 3.3 `users`
 Owners of a tenant. No MFA in the MVP.
@@ -91,7 +95,10 @@ Owners of a tenant. No MFA in the MVP.
 | `last_login_at` | timestamptz null | |
 | `created_at`, `updated_at` | timestamptz | |
 
-Constraints: `UNIQUE (tenant_id, email)`. The same email may exist in different tenants.
+Constraints:
+- `UNIQUE (tenant_id, email)`. The same email may exist in different tenants.
+- `UNIQUE (tenant_id, id)`: enables the composite foreign keys from `sessions` and `stock_movements`.
+- `CHECK (email = lower(email))`.
 
 ### 3.4 `sessions`
 Server-side session.
@@ -105,7 +112,8 @@ Server-side session.
 | `created_at` | timestamptz | |
 | `ip`, `user_agent` | text null | Optional, for basic auditing |
 
-Indexes: `(user_id)`, `(expires_at)` for periodic cleanup.
+Composite FK: `(tenant_id, user_id) → users (tenant_id, id)`. A session cannot belong to a user of another tenant.
+Indexes: `(tenant_id)`, `(user_id)`, `(expires_at)` for periodic cleanup.
 
 ### 3.5 `platform_admins`
 Platform administrators (the platform operator). They approve products in the global catalog. They live outside tenants.
@@ -117,6 +125,7 @@ Platform administrators (the platform operator). They approve products in the gl
 | `password_hash` | text | |
 | `created_at` | timestamptz | |
 
+Constraints: `UNIQUE (email)`, `CHECK (email = lower(email))`.
 In the MVP a seed and a script may be enough; the approval interface can be minimal.
 
 ### 3.6 `categories`
@@ -133,7 +142,7 @@ Shared classification. Shallow tree.
 
 Root examples (`slug`: `name`): `proteins`: Proteins, `amino-acids`: Amino acids, `vitamins-minerals`: Vitamins and minerals, `pre-workouts`: Pre-workouts, `creatines`: Creatines, `fat-burners`: Fat burners, `joint-health`: Joint health, `snacks-bars`: Snacks and bars.
 Naming: categories are stored and seeded in English only. The frontend translates category labels by `slug` from its messages file and falls back to `name` when no translation exists. The API always returns `slug` and `name`.
-Constraints: `UNIQUE (slug)`. Depth limit (2 levels) validated in the application.
+Constraints: `UNIQUE (slug)`, `CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')` (same format as tenant slugs). Depth limit (2 levels) validated in the application.
 A category is only edited from platform administration.
 
 ### 3.7 `global_products`
@@ -159,7 +168,10 @@ Constraints:
 - `UNIQUE (gtin) WHERE gtin IS NOT NULL`.
 - `CHECK (gtin ~ '^[0-9]{14}$')`.
 
-Indexes: `(category_id)`, `(status)`, and text search over `name` and `brand` with `pg_trgm` + `unaccent`.
+Indexes: `(category_id)`, `(status)`, and text search over `name` and `brand` with `pg_trgm` + `unaccent`:
+- `unaccent()` is not `IMMUTABLE`, so the migration defines an `IMMUTABLE` wrapper `immutable_unaccent(text)` with the dictionary pinned.
+- GIN trigram indexes on `immutable_unaccent(lower(name))` and `immutable_unaccent(lower(brand))`.
+- **Rule:** text-search queries must use exactly `immutable_unaccent(lower(<column>))`, applied the same way to the search term; any other expression skips the indexes.
 
 A product without a barcode is valid (bulk items or items without a GTIN). It is then identified by id.
 
@@ -196,6 +208,7 @@ Current stock per tenant product. One row per `tenant_products`, created togethe
 | `updated_at` | timestamptz | |
 
 Composite FK: `(tenant_id, tenant_product_id) → tenant_products (tenant_id, id)`. This makes it impossible for a level to point to another tenant's product.
+Index: `(tenant_id)`.
 
 ### 3.10 `stock_movements`
 **Append-only** ledger of stock changes.
@@ -221,9 +234,10 @@ Constraints:
 - `CHECK (quantity_after >= 0)`.
 - `UNIQUE (tenant_id, client_request_id) WHERE client_request_id IS NOT NULL`.
 - Composite FK `(tenant_id, tenant_product_id) → tenant_products (tenant_id, id)`.
+- Composite FK `(tenant_id, created_by) → users (tenant_id, id)`: a movement cannot be attributed to a user of another tenant.
 
 Index: `(tenant_id, tenant_product_id, created_at DESC)`.
-At the database level, a trigger or permissions that prevent `UPDATE` and `DELETE` on this table are recommended.
+Append-only at the database level: the `BEFORE UPDATE OR DELETE` row trigger `stock_movements_append_only` rejects both operations (`restrict_violation`). `TRUNCATE` is not blocked, because it does not fire row triggers; it is reserved for test cleanup and must never be used by application code.
 
 ---
 
@@ -244,7 +258,7 @@ The 14-digit form is always stored. Scan lookups apply the same function before 
 
 ### Isolation
 1. Every query on per-tenant tables includes the `tenant_id` taken from the session, never from the client.
-2. Composite foreign keys prevent mixing tenants across products, levels and movements.
+2. Composite foreign keys prevent mixing tenants across products, levels, movements, sessions and users.
 3. Repositories are the only way to access per-tenant data.
 
 ### Global catalog
@@ -314,11 +328,12 @@ A `platform_admin` reviews the `pending` products, can correct name, brand or ca
 | Scan by GTIN | Partial `UNIQUE (gtin)` |
 | Tenant inventory list | `(tenant_id, is_active, is_visible)` on `tenant_products` |
 | Public catalog with category filter | `tenant_products` + `global_products(category_id)` |
-| Text search | GIN `pg_trgm` over `name` and `brand` |
+| Text search | GIN `pg_trgm` over `immutable_unaccent(lower(name))` and `immutable_unaccent(lower(brand))` |
 | Product history | `(tenant_id, tenant_product_id, created_at DESC)` on `stock_movements` |
+| Sessions of a tenant | `(tenant_id)` on `sessions` |
 | Session cleanup | `(expires_at)` |
 
-Required extensions: `pgcrypto` (or native `gen_random_uuid()` in Postgres 13+), `pg_trgm`, `unaccent`.
+Required extensions: `pg_trgm`, `unaccent` (created in the migrations). `gen_random_uuid()` is native since Postgres 13, so `pgcrypto` is not needed.
 
 ---
 
