@@ -1,0 +1,32 @@
+:root {
+  --color-primary: #0f766e;
+  --color-secondary: #334155;
+  --color-accent: #f59e0b;
+  --color-background: #ffffff;
+  --color-text: #0f172a;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-primary);
+}
