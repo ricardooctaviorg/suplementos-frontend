@@ -1,145 +1,158 @@
 # CLAUDE.md — suplementos-frontend
 
-Aplicación Next.js con tres zonas: login, panel de gestión por tenant y catálogo público de existencias.
-Lee primero `docs/ARCHITECTURE.md` y `docs/DOMAIN-MODEL.md` (copias de los documentos del proyecto; la versión de referencia vive en `suplementos-backend/docs/`). Si algo de este archivo choca con ellos, avisa antes de decidir.
+Next.js application with three zones: login, per-tenant management dashboard and public stock catalog.
+Read `docs/ARCHITECTURE.md` and `docs/DOMAIN-MODEL.md` first (copies of the project documents; the reference version lives in `suplementos-backend/docs/`). If anything in this file conflicts with them, flag it before deciding.
 
-**Antes de escribir código de Next.js lee `AGENTS.md` y las guías de `node_modules/next/dist/docs/`.** Esta versión de Next tiene cambios importantes frente a lo que conoces (ver la sección "Next.js de esta versión").
+**Before writing Next.js code, read `AGENTS.md` and the guides in `node_modules/next/dist/docs/`.** This version of Next has significant changes compared to what you know (see the "Next.js in this version" section).
 
 ## Stack
 
-Next.js 16 (App Router, Cache Components y Partial Prefetching activados) · React 19 · TypeScript estricto · CSS variables para theming por tenant · Vitest + Testing Library (jsdom) · `html5-qrcode` para cámara · Playwright (más adelante).
+Next.js 16 (App Router, Cache Components and Partial Prefetching enabled) · React 19 · strict TypeScript · CSS variables for per-tenant theming · Vitest + Testing Library (jsdom) · `html5-qrcode` for the camera · Playwright (later).
 
-## Comandos
+## Commands
 
 ```bash
-npm run dev          # servidor de desarrollo
-npm run build        # build de producción
-npm start            # servir el build
-npm test             # Vitest, una pasada
-npm run test:watch   # Vitest en modo watch
-npm run typecheck    # next typegen && tsc --noEmit (genera los tipos de rutas primero)
+npm run dev          # development server
+npm run build        # production build
+npm start            # serve the build
+npm test             # Vitest, single run
+npm run test:watch   # Vitest in watch mode
+npm run typecheck    # next typegen && tsc --noEmit (generates route types first)
 npm run lint         # ESLint
 ```
 
-Antes de dar una tarea por terminada: `npm run typecheck && npm run lint && npm test`.
+Before considering a task done: `npm run typecheck && npm run lint && npm test`.
 
-En local, Next puede correr en el host (sin Docker) para ahorrar recursos; el backend y Postgres sí van en Docker.
+Locally, Next can run on the host (without Docker) to save resources; the backend and Postgres do run in Docker.
 
-## Estructura
+## Structure
 
 ```
 src/
 ├── app/
-│   ├── (auth)/login/              # paso 1: slug del tenant; paso 2: email y contraseña
-│   ├── (gestion)/app/             # panel del tenant (requiere sesión)
-│   │   ├── inventario/
-│   │   ├── captura/               # lector de código de barras / QR
-│   │   ├── productos/
-│   │   └── configuracion/         # nombre, logo, colores
-│   ├── (publico)/catalogo/[slug]/ # catálogo público
-│   └── internal/revalidate/       # endpoint para que el backend invalide el caché
+│   ├── (auth)/login/              # step 1: tenant slug; step 2: email and password
+│   ├── (dashboard)/app/           # tenant dashboard (requires a session)
+│   │   ├── inventory/
+│   │   ├── capture/               # barcode / QR reader
+│   │   ├── products/
+│   │   └── settings/              # name, logo, colors
+│   ├── (public)/catalog/[slug]/   # public catalog
+│   └── internal/revalidate/       # endpoint for the backend to invalidate the cache
 ├── components/
-│   ├── ui/                        # componentes base reutilizables
-│   └── <dominio>/                 # componentes por zona
+│   ├── ui/                        # reusable base components
+│   └── <domain>/                  # components per zone
 ├── lib/
-│   ├── api/                       # cliente de API tipado
-│   ├── theme/                     # theming por tenant
-│   ├── gtin.ts                    # misma validación que el backend
+│   ├── api/                       # typed API client and error-code mapping
+│   ├── theme/                     # per-tenant theming
+│   ├── gtin.ts                    # same validation as the backend
 │   └── session.ts
+├── messages/
+│   └── es.ts                      # all Spanish UI text (typed object)
 └── styles/
-tests/                             # espeja la estructura de src/
+tests/                             # mirrors the structure of src/
 ```
 
-## Reglas críticas
+## Language policy
 
-### Mismo origen para llamar al API
-- El navegador **siempre** llama a `/api/*` en el mismo origen del front. Next lo reenvía al backend con `rewrites` hacia `BACKEND_URL`.
-- Motivo: front y API viven en dominios distintos en Railway y las cookies de sesión `sameSite=lax` no viajan entre sitios. Con el proxy, la cookie pertenece al dominio del front.
-- Las llamadas desde el servidor (SSR, server components) usan `BACKEND_URL` directamente, de preferencia por la red privada de Railway.
-- Nunca guardar tokens de sesión en `localStorage`; la sesión es la cookie `httpOnly` que pone el backend.
+- Everything is in English: code, identifiers, comments, test descriptions, docs, commit messages and branch names.
+- The only exception is user-facing UI text, which is in Spanish and lives **only** in `src/messages/` (`src/messages/es.ts`, a typed object). Pages and components import from there; no literal Spanish text in components, pages, metadata or `lib/`.
+- Keep `<html lang="es">`.
+- API errors: the backend returns `{ error: { code, message } }` with an English `message` that is not shown to users. `lib/api` maps `code` to Spanish text from `es.apiErrors` (`ApiError.userMessage`), with a generic fallback for unknown codes. A new backend error code gets its entry in `es.apiErrors`.
+- Categories are stored in English; the UI translates their labels by `slug` from the messages file and falls back to `name` (see `docs/DOMAIN-MODEL.md`).
+- Tests may assert on Spanish text, since that is what the user sees; their descriptions are in English.
+- Check (accented letters, inverted question and exclamation marks, written as escapes so this file does not match itself): `grep -rnP "[\x{E1}\x{E9}\x{ED}\x{F3}\x{FA}\x{F1}\x{C1}\x{C9}\x{CD}\x{D3}\x{DA}\x{D1}\x{BF}\x{A1}]" src tests docs *.md` should only match `src/messages/` and tests that assert on Spanish text.
+
+## Critical rules
+
+### Same origin for API calls
+- The browser **always** calls `/api/*` on the frontend's own origin. Next forwards it to the backend with `rewrites` pointing to `BACKEND_URL`.
+- Reason: frontend and API live on different domains on Railway, and `sameSite=lax` session cookies do not travel across sites. With the proxy, the cookie belongs to the frontend domain.
+- Server-side calls (SSR, server components) use `BACKEND_URL` directly, preferably over Railway's private network.
+- Never store session tokens in `localStorage`; the session is the `httpOnly` cookie set by the backend.
 
 ### Tenant
-- En el panel, el tenant sale de la sesión. En el catálogo público, del `slug` de la URL.
-- Nunca construir ni enviar un `tenant_id` desde el cliente. El front no decide el aislamiento; solo lo respeta.
+- In the dashboard, the tenant comes from the session. In the public catalog, from the URL `slug`.
+- Never build or send a `tenant_id` from the client. The frontend does not decide isolation; it only respects it.
 
-### Theming por tenant
-- Los colores (`color_primary`, `color_secondary`, `color_accent`, `color_background`, `color_text`) llegan del API y se inyectan como variables CSS (`--color-primary`, etc.) en el contenedor raíz de cada zona del tenant.
-- Todo componente usa las variables, **nunca** colores hardcodeados.
-- Validar contraste mínimo del texto sobre fondo al mostrar la vista previa en configuración.
-- El logo se muestra con `next/image` y un respaldo si no hay logo.
+### Per-tenant theming
+- Colors (`color_primary`, `color_secondary`, `color_accent`, `color_background`, `color_text`) come from the API and are injected as CSS variables (`--color-primary`, etc.) on the root container of each tenant zone.
+- Every component uses the variables, **never** hardcoded colors.
+- Validate minimum text-on-background contrast when showing the preview in settings.
+- The logo is shown with `next/image`, with a fallback when there is no logo.
 
-### Captura por código de barras
-- Dos modos: lector USB (se comporta como teclado) y cámara.
-- Lector USB: capturar la secuencia de teclas rápida terminada en Enter dentro de un campo enfocado; no depender de un evento especial.
-- Cámara: cargar la librería solo en el módulo de captura (import dinámico) para no engordar el resto de la app.
-- Validar y normalizar el GTIN con `lib/gtin.ts` antes de llamar al API (UX inmediata); el backend vuelve a validar.
-- Enviar un `client_request_id` (uuid) en cada registro de movimiento para evitar duplicados por reintento o doble escaneo.
-- Tras escanear: si el producto existe, pedir solo cantidad y precio; si no, mostrar el formulario corto y avisar que quedará pendiente de revisión.
+### Barcode capture
+- Two modes: USB scanner (behaves like a keyboard) and camera.
+- USB scanner: capture the fast key sequence ending in Enter inside a focused field; do not rely on a special event.
+- Camera: load the library only in the capture module (dynamic import) so the rest of the app stays lean.
+- Validate and normalize the GTIN with `lib/gtin.ts` before calling the API (immediate UX); the backend validates again.
+- Send a `client_request_id` (uuid) with every stock movement to avoid duplicates from retries or double scans.
+- After scanning: if the product exists, ask only for quantity and price; otherwise show the short form and warn that it will be pending review.
 
-### Catálogo público
-- Renderizado en servidor (SSR) para SEO: `generateMetadata` con nombre, descripción y colores del tenant.
-- Búsqueda, filtro por categoría y paginación manejados por parámetros de URL (`?q=&categoria=&page=`), para que sean compartibles y rastreables.
-- La existencia se muestra como número o estado (`Disponible`, `Pocas piezas`, `Agotado`) según lo que devuelva el API; el front no recalcula reglas de negocio.
-- Datos "estables" del catálogo (nombre, imagen, precio, categoría) pueden cachearse con `use cache` + ``cacheTag(`tenant:${slug}`)`` y el backend los invalida llamando a `/internal/revalidate` (protegido con `REVALIDATE_SECRET`, que ejecuta `revalidateTag(tag, "max")`). La existencia **no se cachea**: se pide dinámica o con una consulta corta en cliente. Sin WebSockets en el MVP.
-- El endpoint de revalidación vive en `/internal/revalidate` y **no** bajo `/api/`, porque `/api/*` se reenvía al backend.
-- Accesible y simple: HTML semántico, imágenes con `alt`, navegable con teclado.
+### Public catalog
+- Server-rendered (SSR) for SEO: `generateMetadata` with the tenant's name, description and colors.
+- Search, category filter and pagination are handled with URL parameters (`?q=&category=&page=`) so they are shareable and crawlable.
+- Stock is shown as a number or a status (available / low / out, labels from `es.stock`) depending on what the API returns; the frontend does not recompute business rules.
+- "Stable" catalog data (name, image, price, category) may be cached with `use cache` + ``cacheTag(`tenant:${slug}`)``, and the backend invalidates it by calling `/internal/revalidate` (protected with `REVALIDATE_SECRET`, which runs `revalidateTag(tag, "max")`). Stock is **not** cached: it is fetched dynamically or with a short client-side query. No WebSockets in the MVP.
+- The revalidation endpoint lives at `/internal/revalidate` and **not** under `/api/`, because `/api/*` is forwarded to the backend.
+- Accessible and simple: semantic HTML, images with `alt`, keyboard navigable.
 
-## Next.js de esta versión
+## Next.js in this version
 
-- `AGENTS.md` (generado por Next) y `node_modules/next/dist/docs/` son la referencia. Si tu conocimiento de Next contradice esas guías, mandan las guías.
-- **Cache Components** activado: el acceso a datos es dinámico por defecto y se cachea de forma explícita con `use cache`, `cacheLife` y `cacheTag`. Los datos de runtime (`params`, `searchParams`, `cookies()`, `headers()`) se leen dentro de un límite `<Suspense>` o la compilación falla.
-- `params` y `searchParams` son promesas (`await`). Usa los helpers de tipos globales `PageProps<"/ruta">` y `LayoutProps<"/ruta">` (se generan con `npm run typecheck`).
-- Con Cache Components, las rutas ocultas se conservan montadas (`<Activity>`): limpia efectos al desmontar. En el módulo de captura, **detén siempre la cámara** en la función de limpieza del efecto.
-- No se usa `next/font/google` (el build no debe depender de red): fuentes del sistema definidas en `globals.css`.
-- Las pruebas de Vitest cubren componentes síncronos; los componentes de servidor `async` se prueban con E2E (Playwright).
-- Los `rewrites` de `next.config.ts` se fijan al compilar: `BACKEND_URL` debe existir en build.
+- `AGENTS.md` (generated by Next) and `node_modules/next/dist/docs/` are the reference. If your knowledge of Next contradicts those guides, the guides win.
+- **Cache Components** enabled: data access is dynamic by default and is cached explicitly with `use cache`, `cacheLife` and `cacheTag`. Runtime data (`params`, `searchParams`, `cookies()`, `headers()`) is read inside a `<Suspense>` boundary or the build fails.
+- `params` and `searchParams` are promises (`await`). Use the global type helpers `PageProps<"/route">` and `LayoutProps<"/route">` (generated by `npm run typecheck`).
+- With Cache Components, hidden routes stay mounted (`<Activity>`): clean up effects on unmount. In the capture module, **always stop the camera** in the effect's cleanup function.
+- `next/font/google` is not used (the build must not depend on the network): system fonts defined in `globals.css`.
+- Vitest tests cover synchronous components; `async` server components are tested with E2E (Playwright).
+- The `rewrites` in `next.config.ts` are fixed at build time: `BACKEND_URL` must exist during the build.
 
-## Convenciones de código
+## Code conventions
 
-- TypeScript `strict`; prohibido `any`.
-- Componentes de servidor por defecto; `"use client"` solo donde haga falta (formularios, escáner, interacción).
-- Nombres de componentes en `PascalCase`, archivos y carpetas en `kebab-case`; identificadores en inglés, texto visible en español.
-- Todo el acceso al API pasa por `lib/api`; sin `fetch` sueltos en componentes.
-- Los tipos de las respuestas se comparten con el contrato del backend (esquemas Zod o tipos generados); no duplicar tipos a mano si se puede evitar.
-- Formularios con validación en cliente y mensajes de error claros en español; el servidor siempre manda la última palabra.
-- Dinero formateado con `Intl.NumberFormat` usando la moneda del tenant; el valor llega como string del API y no se opera con flotantes.
-- Estilos: CSS Modules con variables CSS (decisión pendiente frente a Tailwind; no mezclar ambos hasta que se decida).
-- Sin `console.log` en código entregado.
+- TypeScript `strict`; `any` is forbidden.
+- Server components by default; `"use client"` only where needed (forms, scanner, interaction).
+- Component names in `PascalCase`, files and folders in `kebab-case`; identifiers in English, visible text in Spanish (from `src/messages/`).
+- All API access goes through `lib/api`; no stray `fetch` calls in components.
+- Response types are shared with the backend contract (Zod schemas or generated types); do not hand-duplicate types when it can be avoided.
+- Forms with client-side validation and clear Spanish error messages; the server always has the final say.
+- Money formatted with `Intl.NumberFormat` using the tenant's currency; the value arrives as a string from the API and is never operated on as a float.
+- Styles: CSS Modules with CSS variables (decision pending versus Tailwind; do not mix both until decided).
+- No `console.log` in shipped code.
 
-## Pruebas
+## Tests
 
-- Vitest + Testing Library. Prioridad: formulario de alta, lector de códigos (lógica de captura de teclado), tabla de inventario, normalización de GTIN, componente de estado de existencia.
-- Probar comportamiento visible para el usuario, no detalles de implementación.
-- Playwright más adelante, para el flujo escanear → registrar → ver en el catálogo público.
-- Una funcionalidad nueva incluye sus pruebas en el mismo cambio.
+- Vitest + Testing Library. Priority: product entry form, barcode reader (keyboard capture logic), inventory table, GTIN normalization, stock status component.
+- Test behavior visible to the user, not implementation details.
+- Playwright later, for the scan → register → see in public catalog flow.
+- A new feature includes its tests in the same change.
 
-## Variables de entorno
+## Environment variables
 
-Validadas al arrancar. Ejemplo en `.env.example`; `.env.local` nunca se versiona.
+Validated at startup. Example in `.env.example`; `.env.local` is never committed.
 
-| Variable | Uso |
+| Variable | Use |
 |----------|-----|
-| `BACKEND_URL` | URL del API (interna en Railway), usada por `rewrites` y SSR |
-| `REVALIDATE_SECRET` | Secreto compartido con el backend para `/internal/revalidate` |
-| `NEXT_PUBLIC_APP_NAME` | Nombre de la plataforma (no sensible) |
+| `BACKEND_URL` | API URL (internal on Railway), used by `rewrites` and SSR |
+| `REVALIDATE_SECRET` | Secret shared with the backend for `/internal/revalidate` |
+| `NEXT_PUBLIC_APP_NAME` | Platform name (not sensitive) |
 
-Nada sensible lleva el prefijo `NEXT_PUBLIC_`.
+Nothing sensitive gets the `NEXT_PUBLIC_` prefix.
 
-## Entornos
+## Environments
 
-Solo dos: **local** y **producción** (Railway). En producción, `next build` y servicio propio en Railway.
+Only two: **local** and **production** (Railway). In production, `next build` and its own Railway service.
 
 ## Git
 
-- Rama principal `main`; ramas `feat/...`, `fix/...`, `chore/...`.
-- Commits en formato convencional (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).
-- Un cambio = una intención.
+- Main branch `main`; branches `feat/...`, `fix/...`, `chore/...`.
+- Conventional commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`), in English.
+- One change = one intent.
 
-## Qué NO hacer
+## What NOT to do
 
-- No implementar carrito, pagos ni punto de venta: fuera del MVP.
-- No hacer que el navegador llame directamente al dominio del backend.
-- No hardcodear colores, nombres de negocio ni logos.
-- No agregar librerías de UI pesadas sin justificarlo (la MacBook de desarrollo es limitada).
-- No duplicar reglas de negocio del backend; el front muestra, valida para UX y delega.
-- No modificar `docs/ARCHITECTURE.md` ni `docs/DOMAIN-MODEL.md` en silencio: propón el cambio y explica por qué.
+- Do not implement a cart, payments or point of sale: out of the MVP.
+- Do not let the browser call the backend domain directly.
+- Do not hardcode colors, business names or logos.
+- Do not add heavy UI libraries without justification (the development MacBook is limited).
+- Do not duplicate backend business rules; the frontend displays, validates for UX and delegates.
+- Do not write Spanish text outside `src/messages/`.
+- Do not modify `docs/ARCHITECTURE.md` or `docs/DOMAIN-MODEL.md` silently: propose the change and explain why.

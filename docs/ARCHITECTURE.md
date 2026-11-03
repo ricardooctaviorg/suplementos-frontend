@@ -1,43 +1,43 @@
 # ARCHITECTURE.md
 
-> Plataforma multi-tenant de gestión de inventario de suplementos para negocios locales, con catálogo público de existencias.
-> Estado: borrador v0.1. Este documento es la fuente de verdad de la arquitectura; los detalles de datos viven en `DOMAIN-MODEL.md` y las decisiones puntuales en `docs/adr/`.
+> Multi-tenant supplement inventory management platform for local businesses, with a public stock catalog.
+> Status: draft v0.1. This document is the source of truth for the architecture; data details live in `DOMAIN-MODEL.md` and individual decisions in `docs/adr/`.
 
 ---
 
-## 1. Visión y alcance
+## 1. Vision and scope
 
-### Objetivo
-Dar a varios negocios locales (tenants) una herramienta simple para controlar su inventario de suplementos y publicar un catálogo con existencias en tiempo real.
+### Goal
+Give several local businesses (tenants) a simple tool to control their supplement inventory and publish a catalog with real-time stock.
 
-### Dentro del MVP
-- Multi-tenant con una sola base de datos (`tenant_id`).
-- Catálogo global de productos compartido entre tenants, con categorías.
-- Panel de gestión por tenant (solo dueños): alta de productos, precios, existencias.
-- Alta rápida por código de barras (GTIN) con lector USB o cámara. Es un módulo interno del panel.
-- Personalización por tenant: nombre, logo, paleta de colores.
-- Catálogo público por tenant: búsqueda, filtros, detalle y existencia.
-- Login general: el usuario escribe el tenant, luego email y contraseña. Sin MFA.
+### In the MVP
+- Multi-tenant with a single database (`tenant_id`).
+- Global product catalog shared across tenants, with categories.
+- Per-tenant management dashboard (owners only): product creation, prices, stock.
+- Fast product entry by barcode (GTIN) with a USB scanner or camera. It is an internal module of the dashboard.
+- Per-tenant customization: name, logo, color palette.
+- Per-tenant public catalog: search, filters, detail and stock.
+- Single login: the user types the tenant, then email and password. No MFA.
 
-### Fuera del MVP (pero previsto)
-- Punto de venta (una venta será un movimiento más del ledger).
-- Ecommerce, carrito, pagos, pedidos.
-- Caducidad y lotes (decisión explícita: stock simple por producto).
-- App móvil.
-- MFA, roles más allá de "dueño".
+### Out of the MVP (but planned)
+- Point of sale (a sale will be one more movement in the ledger).
+- Ecommerce, cart, payments, orders.
+- Expiration dates and lots (explicit decision: simple stock per product).
+- Mobile app.
+- MFA, roles beyond "owner".
 
 ---
 
-## 2. Vista general
+## 2. Overview
 
 ```
                     ┌──────────────────────────────┐
                     │  frontend (Next.js + TS)     │
                     │  repo: suplementos-frontend  │
                     │                              │
-   Dueño ─────────► │  (gestion)  /app/*           │
-                    │  (publico)  /catalogo/[slug] │ ◄───── Cliente final
-                    │  (auth)     /login           │
+   Owner ─────────► │  (dashboard) /app/*          │
+                    │  (public)    /catalog/[slug] │ ◄───── End customer
+                    │  (auth)      /login          │
                     └──────────────┬───────────────┘
                                    │ HTTPS / JSON
                     ┌──────────────▼───────────────┐
@@ -53,186 +53,186 @@ Dar a varios negocios locales (tenants) una herramienta simple para controlar su
                     └──────────────────────────────┘
 ```
 
-Dos repositorios, sin monorepo:
+Two repositories, no monorepo:
 
-| Repo | Contenido | Despliegue |
-|------|-----------|------------|
-| `suplementos-backend` | API REST en Fastify, lógica de dominio, acceso a datos, migraciones | Railway (servicio) |
-| `suplementos-frontend` | Un solo Next.js con route groups: panel, catálogo público y login | Railway (servicio) |
+| Repo | Contents | Deployment |
+|------|----------|------------|
+| `suplementos-backend` | Fastify REST API, domain logic, data access, migrations | Railway (service) |
+| `suplementos-frontend` | A single Next.js app with route groups: dashboard, public catalog and login | Railway (service) |
 
-> Los nombres de repo son provisionales.
+> Repo names are provisional.
 
-### Por qué un solo front
-Panel y catálogo comparten sistema de diseño, theming por tenant y cliente de API. El catálogo público necesita SSR para SEO, y Next lo resuelve igual que el panel. Si el catálogo crece o necesita otro ciclo de despliegue, se separa después sin tocar el backend, porque ya consume `/api/public/*`.
+### Why a single frontend
+The dashboard and the catalog share the design system, per-tenant theming and the API client. The public catalog needs SSR for SEO, and Next handles it the same way as the dashboard. If the catalog grows or needs a different deployment cycle, it can be split later without touching the backend, because it already consumes `/api/public/*`.
 
 ---
 
 ## 3. Stack
 
 ### Backend
-- **Node.js (LTS) + TypeScript** estricto.
-- **Fastify** como framework HTTP.
-- **Drizzle ORM** + **drizzle-kit** para esquema y migraciones.
-- **Zod** para validación de entrada (con `fastify-type-provider-zod`) y para generar los tipos de contrato.
-- **argon2** para hash de contraseñas.
-- **Vitest** para pruebas unitarias; pruebas de integración contra Postgres en Docker.
+- **Node.js (LTS) + TypeScript**, strict.
+- **Fastify** as the HTTP framework.
+- **Drizzle ORM** + **drizzle-kit** for schema and migrations.
+- **Zod** for input validation (with `fastify-type-provider-zod`) and to generate contract types.
+- **argon2** for password hashing.
+- **Vitest** for unit tests; integration tests against Postgres in Docker.
 
 ### Frontend
 - **Next.js (App Router) + TypeScript**.
-- Estilos: CSS variables para theming por tenant. Tailwind es opcional, decidirlo en el ADR del front.
-- Lectura de códigos: entrada de teclado para lector USB y `html5-qrcode` o ZXing para cámara.
-- **Vitest + Testing Library** para componentes. Playwright más adelante.
+- Styles: CSS variables for per-tenant theming. Tailwind is optional, to be decided in the frontend ADR.
+- Barcode reading: keyboard input for USB scanners and `html5-qrcode` or ZXing for the camera.
+- **Vitest + Testing Library** for components. Playwright later.
 
-### Datos e infraestructura
+### Data and infrastructure
 - **PostgreSQL**.
-- **Docker / docker compose** para local.
-- **Railway** para producción.
-- **Cloudflare R2** (compatible con S3) para logos e imágenes de productos.
+- **Docker / docker compose** for local.
+- **Railway** for production.
+- **Cloudflare R2** (S3-compatible) for logos and product images.
 
 ---
 
 ## 4. Multi-tenancy
 
-**Modelo:** base compartida, esquema compartido, columna `tenant_id` en toda tabla que pertenezca a un negocio.
+**Model:** shared database, shared schema, `tenant_id` column in every table that belongs to a business.
 
-- **Datos globales (sin `tenant_id`):** `categories`, `global_products`.
-- **Datos por tenant (con `tenant_id`):** `tenant_settings`, `users`, `tenant_products`, `stock_movements`, `stock_levels`.
+- **Global data (no `tenant_id`):** `categories`, `global_products`.
+- **Per-tenant data (with `tenant_id`):** `tenant_settings`, `users`, `tenant_products`, `stock_movements`, `stock_levels`.
 
-### Reglas de aislamiento
-1. Todo acceso a datos por tenant pasa por una capa de repositorios que **exige** el `tenant_id`. No se escribe SQL o consultas de tenant fuera de esa capa.
-2. El `tenant_id` sale **siempre de la sesión autenticada** (panel) o del slug resuelto en servidor (catálogo público). Nunca se acepta del body ni de un parámetro de cliente en rutas de administración.
-3. Candidato a segunda línea de defensa: **Row Level Security** de Postgres. Se evalúa en un ADR; no bloquea el MVP.
+### Isolation rules
+1. All per-tenant data access goes through a repository layer that **requires** the `tenant_id`. No SQL or tenant queries are written outside that layer.
+2. The `tenant_id` **always comes from the authenticated session** (dashboard) or from the slug resolved on the server (public catalog). It is never accepted from the body or from a client parameter in admin routes.
+3. Candidate second line of defense: Postgres **Row Level Security**. To be evaluated in an ADR; it does not block the MVP.
 
-### Resolución del tenant
-- **Panel y login:** el tenant se elige escribiendo su slug en `/login`; queda en la sesión.
-- **Catálogo público:** `/catalogo/[slug]` en el MVP. Subdominios (`slug.dominio.com`) quedan como mejora si se compra dominio con wildcard.
+### Tenant resolution
+- **Dashboard and login:** the tenant is chosen by typing its slug at `/login`; it is stored in the session.
+- **Public catalog:** `/catalog/[slug]` in the MVP. Subdomains (`slug.domain.com`) remain a possible improvement if a wildcard domain is purchased.
 
 ### Theming
-`tenant_settings` guarda nombre, logo y paleta. El layout del front los inyecta como variables CSS (`--color-primary`, etc.) en el contenedor raíz de cada tenant.
+`tenant_settings` stores name, logo and palette. The frontend layout injects them as CSS variables (`--color-primary`, etc.) on each tenant's root container.
 
 ---
 
-## 5. Autenticación y autorización
+## 5. Authentication and authorization
 
-- **Auth propia**, encapsulada en un módulo (`auth`) para poder migrar a un proveedor después.
-- Flujo: `/login` pide slug del tenant → pantalla de email y contraseña → sesión.
-- Contraseñas con **argon2id**.
-- Sesión del lado servidor (tabla `sessions` en Postgres) con cookie `httpOnly`, `secure` y `sameSite=lax`. Evita JWT para no complicar la revocación.
-- Un solo rol en el MVP: **dueño** del tenant.
-- Protección básica: rate limiting en login (`@fastify/rate-limit`) y mensajes de error genéricos.
-- El catálogo público no requiere autenticación.
-
----
-
-## 6. Dominio: inventario
-
-Resumen; el detalle está en `DOMAIN-MODEL.md`.
-
-- **Catálogo global:** producto identificado por GTIN, con estado `aprobado` o `pendiente`.
-- **Catálogo del tenant:** `tenant_products` referencia al producto global y agrega precio, SKU propio y visibilidad pública.
-- **Existencias:** `stock_movements` es un ledger (entrada, salida, ajuste). `stock_levels` guarda la cantidad actual y se actualiza **en la misma transacción** que el movimiento.
-- Sin lotes ni caducidad en esta etapa.
-
-### Gobernanza del catálogo global
-- Los tenants **no editan** productos globales; solo sus campos propios.
-- Un producto nuevo creado por un tenant queda `pendiente` y es visible solo para ese tenant hasta que un administrador de plataforma lo apruebe.
-
-### Alta rápida por código de barras
-1. El dueño escanea el GTIN en el módulo de captura.
-2. El backend busca en `global_products`.
-3. Si existe: se pide cantidad y precio y se crea el `tenant_product` con su entrada de stock.
-4. Si no existe: formulario corto (nombre, marca, categoría, foto) y se crea como `pendiente`.
-5. Opcional más adelante: prellenado con Open Food Facts.
+- **In-house auth**, encapsulated in a module (`auth`) so it can be migrated to a provider later.
+- Flow: `/login` asks for the tenant slug → email and password screen → session.
+- Passwords with **argon2id**.
+- Server-side session (`sessions` table in Postgres) with an `httpOnly`, `secure`, `sameSite=lax` cookie. Avoids JWT to keep revocation simple.
+- A single role in the MVP: tenant **owner**.
+- Basic protection: rate limiting on login (`@fastify/rate-limit`) and generic error messages.
+- The public catalog does not require authentication.
 
 ---
 
-## 7. Catálogo público y existencias
+## 6. Domain: inventory
 
-- Rutas `/api/public/:slug/products` (listado paginado, búsqueda, filtro por categoría) y `/api/public/:slug/products/:id`.
-- Solo expone productos con `visible = true` y datos no sensibles.
-- Páginas con **SSR** para SEO.
-- **Existencia casi en tiempo real**, sin WebSockets en el MVP:
-  - El número de existencia se pide al backend desde el cliente con una consulta corta.
-  - Opcional: el backend llama a un endpoint de revalidación del front cuando cambia el stock.
-- Si el tráfico lo pide, se agrega caché corta en el backend. No antes.
+Summary; details are in `DOMAIN-MODEL.md`.
 
-### Imágenes y archivos
-- Almacenamiento en **Cloudflare R2**: la capa gratuita cubre 10 GB de almacenamiento, 1 millón de operaciones de escritura y 10 millones de lectura al mes, y la salida de datos no se cobra. Suficiente para el catálogo de varios negocios locales.
-- Subida **a través del backend**: valida tipo y tamaño, reescala y convierte a webp con `sharp`, y guarda en R2 con el SDK de S3.
-- Claves: `tenants/{tenantId}/logo.webp` y `products/{globalProductId}.webp`. La base guarda la URL pública.
-- Lectura pública con un dominio propio conectado al bucket (el subdominio de desarrollo `r2.dev` no es para producción).
-- Dos ambientes, dos buckets: uno para local y otro para producción.
+- **Global catalog:** product identified by GTIN, with status `approved` or `pending`.
+- **Tenant catalog:** `tenant_products` references the global product and adds price, the tenant's own SKU and public visibility.
+- **Stock:** `stock_movements` is a ledger (in, out, adjustment). `stock_levels` holds the current quantity and is updated **in the same transaction** as the movement.
+- No lots or expiration dates at this stage.
 
-### Mismo origen entre front y API
-Front y API viven en dominios distintos en Railway, y las cookies `sameSite=lax` no viajan entre sitios. Por eso el navegador llama siempre a `/api/*` en el dominio del front y Next lo reenvía al backend con `rewrites`. La cookie de sesión queda en el dominio del front. El SSR llama al backend directo, de preferencia por la red privada de Railway.
+### Global catalog governance
+- Tenants **do not edit** global products; only their own fields.
+- A new product created by a tenant stays `pending` and is visible only to that tenant until a platform administrator approves it.
 
----
-
-## 8. Contrato de API
-
-- REST + JSON, prefijo `/api`.
-- Tres zonas: `/api/auth/*`, `/api/admin/*` (requiere sesión) y `/api/public/*` (sin sesión).
-- Validación con Zod en cada ruta; los esquemas son la fuente de los tipos.
-- Errores con formato uniforme: `{ "error": { "code": "...", "message": "..." } }`.
-- Paginación por `page` y `pageSize`, con tope máximo.
-- Versionado: sin prefijo de versión por ahora; se introduce `/v1` si hay clientes externos.
+### Fast entry by barcode
+1. The owner scans the GTIN in the capture module.
+2. The backend looks it up in `global_products`.
+3. If it exists: quantity and price are requested and the `tenant_product` is created with its stock entry.
+4. If it does not exist: short form (name, brand, category, photo) and it is created as `pending`.
+5. Optional later: prefill with Open Food Facts.
 
 ---
 
-## 9. Entornos
+## 7. Public catalog and stock
 
-Solo dos:
+- Routes `/api/public/:slug/products` (paginated list, search, category filter) and `/api/public/:slug/products/:id`.
+- Only exposes products with `visible = true` and non-sensitive data.
+- Pages rendered with **SSR** for SEO.
+- **Near real-time stock**, without WebSockets in the MVP:
+  - The stock figure is requested from the backend by the client with a short query.
+  - Optional: the backend calls a frontend revalidation endpoint when stock changes.
+- If traffic demands it, a short cache is added in the backend. Not before.
 
-| Entorno | Dónde | Notas |
-|---------|-------|-------|
-| `local` | Docker Compose | Postgres y API en contenedores |
-| `production` | Railway | Servicios backend, frontend y Postgres |
+### Images and files
+- Storage in **Cloudflare R2**: the free tier covers 10 GB of storage, 1 million write operations and 10 million read operations per month, and egress is free. Enough for the catalog of several local businesses.
+- Upload **through the backend**: validates type and size, resizes and converts to webp with `sharp`, and stores in R2 with the S3 SDK.
+- Keys: `tenants/{tenantId}/logo.webp` and `products/{globalProductId}.webp`. The database stores the public URL.
+- Public reads through a custom domain connected to the bucket (the `r2.dev` development subdomain is not for production).
+- Two environments, two buckets: one for local and one for production.
 
-### Local y la MacBook Intel 2019
-Docker Desktop consume bastante en esa máquina. Por defecto se dockeriza **Postgres y el API**; el front de Next se puede correr en el host con `npm run dev` si va lento. El `docker-compose.yml` del backend levanta Postgres y expone el puerto.
-
-### Configuración
-- Variables de entorno, con `.env.example` versionado y `.env` ignorado.
-- Validación de variables al arrancar (Zod); el proceso falla rápido si falta alguna.
-- Migraciones: se ejecutan como paso de despliegue, no al arrancar la app.
-
-### Producción en Railway
-- Un servicio por repo más el plugin de Postgres.
-- Variables de entorno en Railway; nunca secretos en el repo.
-- Respaldos de la base: activarlos y probar una restauración antes de cargar datos reales.
+### Same origin for frontend and API
+Frontend and API live on different domains in Railway, and `sameSite=lax` cookies do not travel across sites. That is why the browser always calls `/api/*` on the frontend domain and Next forwards it to the backend with `rewrites`. The session cookie stays on the frontend domain. SSR calls the backend directly, preferably over Railway's private network.
 
 ---
 
-## 10. Pruebas
+## 8. API contract
 
-- **Backend:** Vitest. Unitarias para lógica de dominio (movimientos y niveles de stock, resolución de tenant). Integración para repositorios y rutas contra Postgres de Docker.
-- **Frontend:** Vitest + Testing Library para componentes clave (formulario de alta, lector de códigos, tabla de inventario).
-- **E2E:** Playwright, más adelante, con el flujo escanear → registrar → ver en catálogo público.
-- Prioridad de cobertura: aislamiento entre tenants y consistencia de stock.
+- REST + JSON, `/api` prefix.
+- Three zones: `/api/auth/*`, `/api/admin/*` (requires a session) and `/api/public/*` (no session).
+- Zod validation on every route; schemas are the source of the types.
+- Uniform error format: `{ "error": { "code": "...", "message": "..." } }`. The `code` is the stable contract; the `message` is in English and is not meant to be shown to end users (the frontend maps `code` to Spanish UI text).
+- Pagination with `page` and `pageSize`, with a maximum cap.
+- Versioning: no version prefix for now; `/v1` is introduced if there are external clients.
 
 ---
 
-## 11. Estructura de carpetas (propuesta)
+## 9. Environments
+
+Only two:
+
+| Environment | Where | Notes |
+|-------------|-------|-------|
+| `local` | Docker Compose | Postgres and API in containers |
+| `production` | Railway | Backend, frontend and Postgres services |
+
+### Local and the 2019 Intel MacBook
+Docker Desktop is fairly heavy on that machine. By default **Postgres and the API** are dockerized; the Next frontend can run on the host with `npm run dev` if it is slow. The backend's `docker-compose.yml` starts Postgres and exposes the port.
+
+### Configuration
+- Environment variables, with `.env.example` committed and `.env` ignored.
+- Variables are validated at startup (Zod); the process fails fast if any is missing.
+- Migrations: run as a deployment step, not when the app starts.
+
+### Production on Railway
+- One service per repo plus the Postgres plugin.
+- Environment variables in Railway; never secrets in the repo.
+- Database backups: enable them and test a restore before loading real data.
+
+---
+
+## 10. Testing
+
+- **Backend:** Vitest. Unit tests for domain logic (stock movements and levels, tenant resolution). Integration tests for repositories and routes against Postgres in Docker.
+- **Frontend:** Vitest + Testing Library for key components (product entry form, barcode reader, inventory table).
+- **E2E:** Playwright, later, with the flow scan → register → see in public catalog.
+- Coverage priority: tenant isolation and stock consistency.
+
+---
+
+## 11. Folder structure (proposal)
 
 ### Backend
 ```
 suplementos-backend/
 ├── src/
-│   ├── config/          # env, constantes
-│   ├── db/              # schema Drizzle, migraciones, cliente
+│   ├── config/          # env, constants
+│   ├── db/              # Drizzle schema, migrations, client
 │   ├── modules/
 │   │   ├── auth/
 │   │   ├── tenants/
 │   │   ├── catalog/     # global_products, categories
 │   │   ├── inventory/   # tenant_products, stock
-│   │   └── public/      # rutas del catálogo público
-│   ├── plugins/         # plugins de Fastify (db, auth, rate limit)
-│   ├── shared/          # errores, utilidades
+│   │   └── public/      # public catalog routes
+│   ├── plugins/         # Fastify plugins (db, auth, rate limit)
+│   ├── shared/          # errors, utilities
 │   └── server.ts
 ├── tests/
 ├── docker-compose.yml
 ├── CLAUDE.md
-└── ARCHITECTURE.md  (copia o enlace a este documento)
+└── ARCHITECTURE.md  (copy of or link to this document)
 ```
 
 ### Frontend
@@ -241,56 +241,61 @@ suplementos-frontend/
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/login/
-│   │   ├── (gestion)/app/        # panel del tenant
-│   │   └── (publico)/catalogo/[slug]/
+│   │   ├── (dashboard)/app/      # tenant dashboard
+│   │   │   ├── inventory/
+│   │   │   ├── capture/
+│   │   │   ├── products/
+│   │   │   └── settings/
+│   │   └── (public)/catalog/[slug]/
 │   ├── components/
-│   ├── lib/             # cliente de API, theming, utilidades
+│   ├── lib/             # API client, theming, utilities
 │   └── styles/
 ├── tests/
 ├── CLAUDE.md
-└── ARCHITECTURE.md  (copia o enlace)
+└── ARCHITECTURE.md  (copy or link)
 ```
 
-Cada módulo del backend tiene sus rutas, servicio, repositorio y esquemas Zod.
+Each backend module has its routes, service, repository and Zod schemas.
 
 ---
 
-## 12. Decisiones registradas
+## 12. Recorded decisions
 
-| # | Decisión | Estado |
+| # | Decision | Status |
 |---|----------|--------|
-| 1 | PostgreSQL en lugar de MongoDB (datos relacionales, transacciones de stock) | Tomada |
-| 2 | Multi-tenant con base compartida y `tenant_id` | Tomada |
-| 3 | Backend en Node + TypeScript con **Fastify** | Tomada |
-| 4 | Auth propia con sesión en servidor, detrás de un módulo | Tomada |
-| 5 | Dos repos; un solo Next.js con route groups para panel y catálogo | Tomada |
-| 6 | Sin lotes ni caducidad en el MVP | Tomada |
-| 7 | Ledger de movimientos + `stock_levels` en la misma transacción | Tomada |
-| 8 | Drizzle como ORM | Propuesta |
-| 9 | Row Level Security como defensa adicional | Pendiente |
-| 10 | Tailwind vs CSS Modules en el front | Pendiente |
-| 11 | Tenant en catálogo público por path vs subdominio | Path en MVP |
-| 12 | Cloudflare R2 para imágenes, subida vía backend | Tomada |
-| 13 | Navegador llama al API en el mismo origen (rewrites de Next) | Tomada |
+| 1 | PostgreSQL instead of MongoDB (relational data, stock transactions) | Decided |
+| 2 | Multi-tenant with a shared database and `tenant_id` | Decided |
+| 3 | Backend in Node + TypeScript with **Fastify** | Decided |
+| 4 | In-house auth with server-side sessions, behind a module | Decided |
+| 5 | Two repos; a single Next.js app with route groups for dashboard and catalog | Decided |
+| 6 | No lots or expiration dates in the MVP | Decided |
+| 7 | Movement ledger + `stock_levels` in the same transaction | Decided |
+| 8 | Drizzle as the ORM | Proposed |
+| 9 | Row Level Security as an additional defense | Pending |
+| 10 | Tailwind vs CSS Modules in the frontend | Pending |
+| 11 | Tenant in the public catalog by path vs subdomain | Path in MVP |
+| 12 | Cloudflare R2 for images, upload through the backend | Decided |
+| 13 | Browser calls the API on the same origin (Next rewrites) | Decided |
+| 14 | Language policy: everything in English except the frontend UI text (Spanish) | Decided |
 
-Cada decisión relevante tendrá su ADR corto en `docs/adr/NNNN-titulo.md`.
-
----
-
-## 13. Fases
-
-1. **Fundación:** repos, Docker, esquema base, auth, tenants y theming.
-2. **Catálogo e inventario:** categorías, alta por código de barras, stock.
-3. **Catálogo público:** listado, búsqueda, detalle, existencias.
-4. **Punto de venta:** ventas como movimientos de stock.
-5. **Ecommerce** (opcional): pedidos, carrito, pagos.
+Each relevant decision will have a short ADR in `docs/adr/NNNN-title.md`.
 
 ---
 
-## 14. Riesgos y consideraciones
+## 13. Phases
 
-- **Fuga entre tenants:** el mayor riesgo del modelo. Mitigación: capa de repositorios obligatoria, pruebas de aislamiento y, quizá, RLS.
-- **Ensuciar el catálogo global:** mitigado con estado `pendiente` y aprobación manual.
-- **Concurrencia de stock:** actualizar movimiento y nivel en una transacción, con restricción para evitar stock negativo.
-- **Recursos de la MacBook:** mantener el stack local mínimo.
-- **Cobertura de datos de suplementos en APIs abiertas:** no depender de ellas para el alta.
+1. **Foundation:** repos, Docker, base schema, auth, tenants and theming.
+2. **Catalog and inventory:** categories, barcode entry, stock.
+3. **Public catalog:** list, search, detail, stock.
+4. **Point of sale:** sales as stock movements.
+5. **Ecommerce** (optional): orders, cart, payments.
+
+---
+
+## 14. Risks and considerations
+
+- **Cross-tenant leaks:** the biggest risk of the model. Mitigation: mandatory repository layer, isolation tests and, perhaps, RLS.
+- **Polluting the global catalog:** mitigated with the `pending` status and manual approval.
+- **Stock concurrency:** update movement and level in one transaction, with a constraint that prevents negative stock.
+- **MacBook resources:** keep the local stack minimal.
+- **Supplement data coverage in open APIs:** do not depend on them for product entry.

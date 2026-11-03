@@ -1,25 +1,25 @@
 # DOMAIN-MODEL.md
 
-> Modelo de datos y reglas de dominio de la plataforma de inventario de suplementos.
-> Complementa a `ARCHITECTURE.md`. Estado: borrador v0.1.
-> Motor: PostgreSQL. ORM: Drizzle. Todo el esquema se define en `src/db/schema/`.
+> Data model and domain rules of the supplement inventory platform.
+> Complements `ARCHITECTURE.md`. Status: draft v0.1.
+> Engine: PostgreSQL. ORM: Drizzle. The whole schema is defined in `src/db/schema/`.
 
 ---
 
-## 1. Convenciones generales
+## 1. General conventions
 
-- **IDs:** `uuid` con `default gen_random_uuid()`. Excepción: `sessions.id` es un hash de token (texto).
-- **Timestamps:** `timestamptz`, siempre en UTC. `created_at` y `updated_at` en toda tabla mutable.
-- **Dinero:** `numeric(12,2)`. Nunca `float`. La moneda vive en `tenant_settings.currency` (por defecto `MXN`).
-- **Cantidades de stock:** `integer`.
-- **Nombres:** tablas y columnas en inglés, `snake_case`. Textos visibles al usuario en español.
-- **Borrado:** lógico (`is_active = false`) para entidades de negocio. Los movimientos de stock **nunca** se borran ni se editan.
-- **Enums:** `pgEnum` de Drizzle (o `text` con `CHECK`, si se prefiere facilidad de migración).
-- **Aislamiento:** toda tabla con `tenant_id` lo exige `NOT NULL`, con índice que empieza por `tenant_id`.
+- **IDs:** `uuid` with `default gen_random_uuid()`. Exception: `sessions.id` is a token hash (text).
+- **Timestamps:** `timestamptz`, always in UTC. `created_at` and `updated_at` on every mutable table.
+- **Money:** `numeric(12,2)`. Never `float`. The currency lives in `tenant_settings.currency` (default `MXN`).
+- **Stock quantities:** `integer`.
+- **Naming:** tables and columns in English, `snake_case`. User-facing UI text is in Spanish and lives in the frontend.
+- **Deletion:** soft delete (`is_active = false`) for business entities. Stock movements are **never** deleted or edited.
+- **Enums:** Drizzle `pgEnum` (or `text` with `CHECK`, if easier migrations are preferred).
+- **Isolation:** every table with `tenant_id` requires it `NOT NULL`, with an index that starts with `tenant_id`.
 
 ---
 
-## 2. Vista de entidades
+## 2. Entity overview
 
 ```
 categories (global) ◄──── global_products (global) ◄──── tenant_products ────► stock_levels
@@ -30,312 +30,314 @@ categories (global) ◄──── global_products (global) ◄──── ten
 tenants ──┬── tenant_settings (1:1)                            │
           ├── users ──── sessions                              │
           └───────────────────────────────────────────────────┘
-platform_admins (independiente de tenants)
+platform_admins (independent of tenants)
 ```
 
-**Globales** (sin `tenant_id`): `categories`, `global_products`, `platform_admins`.
-**Por tenant** (con `tenant_id`): `tenant_settings`, `users`, `sessions`, `tenant_products`, `stock_levels`, `stock_movements`.
+**Global** (no `tenant_id`): `categories`, `global_products`, `platform_admins`.
+**Per tenant** (with `tenant_id`): `tenant_settings`, `users`, `sessions`, `tenant_products`, `stock_levels`, `stock_movements`.
 
 ---
 
-## 3. Tablas
+## 3. Tables
 
 ### 3.1 `tenants`
-Un negocio cliente.
+A client business.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
-| `slug` | text | Único. Minúsculas, `a-z0-9-`, 3 a 40 caracteres. Es lo que el usuario escribe en el login y va en la URL del catálogo. |
-| `name` | text | Nombre comercial |
-| `status` | enum `active` \| `suspended` | Un tenant suspendido no puede iniciar sesión y su catálogo público deja de responder |
+| `slug` | text | Unique. Lowercase, `a-z0-9-`, 3 to 40 characters. It is what the user types at login and goes in the catalog URL. |
+| `name` | text | Business name |
+| `status` | enum `active` \| `suspended` | A suspended tenant cannot log in and its public catalog stops responding |
 | `created_at`, `updated_at` | timestamptz | |
 
-Restricciones: `UNIQUE (slug)`, `CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')`.
-Lista de slugs reservados (`app`, `api`, `admin`, `login`, `catalogo`, `www`...) validada en la capa de aplicación.
+Constraints: `UNIQUE (slug)`, `CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')`.
+List of reserved slugs (`app`, `api`, `admin`, `login`, `catalog`, `www`...) validated in the application layer.
 
 ### 3.2 `tenant_settings`
-Personalización e identidad visual. Relación 1:1 con `tenants`.
+Customization and visual identity. 1:1 relationship with `tenants`.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `tenant_id` | uuid PK, FK → tenants | |
-| `display_name` | text | Nombre mostrado en el catálogo (puede diferir de `tenants.name`) |
+| `display_name` | text | Name shown in the catalog (may differ from `tenants.name`) |
 | `logo_url` | text null | |
-| `color_primary` | text | Hex `#RRGGBB`, con `CHECK` |
+| `color_primary` | text | Hex `#RRGGBB`, with `CHECK` |
 | `color_secondary` | text | |
 | `color_accent` | text | |
 | `color_background` | text | |
 | `color_text` | text | |
-| `currency` | char(3) | Por defecto `MXN` |
-| `show_exact_stock` | boolean | Por defecto `false`. Si es `false`, el catálogo muestra Disponible / Pocas piezas / Agotado en lugar del número |
-| `low_stock_threshold` | integer | Por defecto `5`. Umbral de "Pocas piezas" |
-| `contact_phone` | text null | Útil para un catálogo local (WhatsApp, teléfono) |
+| `currency` | char(3) | Default `MXN` |
+| `show_exact_stock` | boolean | Default `false`. If `false`, the catalog shows a stock status (in stock / low stock / out of stock) instead of the number |
+| `low_stock_threshold` | integer | Default `5`. Threshold for "low stock" |
+| `contact_phone` | text null | Useful for a local catalog (WhatsApp, phone) |
 | `address` | text null | |
 | `updated_at` | timestamptz | |
 
-Los colores se inyectan como variables CSS en el front. Se validan contra hex estricto para evitar inyección de estilos.
+Colors are injected as CSS variables in the frontend. They are validated against strict hex to prevent style injection.
 
 ### 3.3 `users`
-Dueños de un tenant. Sin MFA en el MVP.
+Owners of a tenant. No MFA in the MVP.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
 | `tenant_id` | uuid FK → tenants | |
-| `email` | text | Se guarda normalizado en minúsculas |
+| `email` | text | Stored normalized to lowercase |
 | `password_hash` | text | argon2id |
 | `name` | text | |
-| `role` | enum `owner` | Un solo valor por ahora; el enum deja espacio para `staff` |
+| `role` | enum `owner` | A single value for now; the enum leaves room for `staff` |
 | `is_active` | boolean | |
 | `last_login_at` | timestamptz null | |
 | `created_at`, `updated_at` | timestamptz | |
 
-Restricciones: `UNIQUE (tenant_id, email)`. El mismo correo puede existir en tenants distintos.
+Constraints: `UNIQUE (tenant_id, email)`. The same email may exist in different tenants.
 
 ### 3.4 `sessions`
-Sesión del lado servidor.
+Server-side session.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
-| `id` | text PK | Hash SHA-256 del token de la cookie. El token en claro nunca se guarda |
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | text PK | SHA-256 hash of the cookie token. The plain token is never stored |
 | `user_id` | uuid FK → users | |
 | `tenant_id` | uuid FK → tenants | |
 | `expires_at` | timestamptz | |
 | `created_at` | timestamptz | |
-| `ip`, `user_agent` | text null | Opcional, para auditoría básica |
+| `ip`, `user_agent` | text null | Optional, for basic auditing |
 
-Índices: `(user_id)`, `(expires_at)` para limpieza periódica.
+Indexes: `(user_id)`, `(expires_at)` for periodic cleanup.
 
 ### 3.5 `platform_admins`
-Administradores de la plataforma (tú). Sirven para aprobar productos del catálogo global. Quedan fuera de los tenants.
+Platform administrators (the platform operator). They approve products in the global catalog. They live outside tenants.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
-| `email` | text | Único |
+| `email` | text | Unique |
 | `password_hash` | text | |
 | `created_at` | timestamptz | |
 
-En el MVP puede bastar con un seed y un script; la interfaz de aprobación puede ser mínima.
+In the MVP a seed and a script may be enough; the approval interface can be minimal.
 
 ### 3.6 `categories`
-Clasificación compartida. Árbol de profundidad pequeña.
+Shared classification. Shallow tree.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
-| `parent_id` | uuid null FK → categories | `null` = raíz |
-| `name` | text | |
-| `slug` | text | Único |
-| `sort_order` | integer | Por defecto `0` |
+| `parent_id` | uuid null FK → categories | `null` = root |
+| `name` | text | English name. Fallback label when the frontend has no translation for the `slug` |
+| `slug` | text | Unique, English, stable. The frontend translation key: never changes once created |
+| `sort_order` | integer | Default `0` |
 | `created_at` | timestamptz | |
 
-Ejemplos de raíz: Proteínas, Aminoácidos, Vitaminas y minerales, Pre-entrenos, Creatinas, Quemadores, Salud articular, Snacks y barras.
-Restricciones: `UNIQUE (slug)`. Límite de profundidad (2 niveles) validado en la aplicación.
-Una categoría solo se edita desde administración de plataforma.
+Root examples (`slug`: `name`): `proteins`: Proteins, `amino-acids`: Amino acids, `vitamins-minerals`: Vitamins and minerals, `pre-workouts`: Pre-workouts, `creatines`: Creatines, `fat-burners`: Fat burners, `joint-health`: Joint health, `snacks-bars`: Snacks and bars.
+Naming: categories are stored and seeded in English only. The frontend translates category labels by `slug` from its messages file and falls back to `name` when no translation exists. The API always returns `slug` and `name`.
+Constraints: `UNIQUE (slug)`. Depth limit (2 levels) validated in the application.
+A category is only edited from platform administration.
 
 ### 3.7 `global_products`
-Catálogo general compartido entre tenants.
+General catalog shared across tenants.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
-| `gtin` | text null | Normalizado a 14 dígitos (ver sección 4). Único cuando no es nulo |
+| `gtin` | text null | Normalized to 14 digits (see section 4). Unique when not null |
 | `name` | text | |
 | `brand` | text | |
-| `presentation` | text null | Ej. "60 cápsulas", "2 lb sabor chocolate" |
+| `presentation` | text null | E.g. "60 capsules", "2 lb chocolate flavor" |
 | `description` | text null | |
 | `category_id` | uuid FK → categories | |
 | `image_url` | text null | |
 | `status` | enum `pending` \| `approved` \| `rejected` | |
-| `created_by_tenant_id` | uuid null FK → tenants | Quién lo dio de alta. `null` para carga inicial de plataforma |
+| `created_by_tenant_id` | uuid null FK → tenants | Who created it. `null` for the platform's initial load |
 | `reviewed_by` | uuid null FK → platform_admins | |
 | `reviewed_at` | timestamptz null | |
 | `created_at`, `updated_at` | timestamptz | |
 
-Restricciones:
+Constraints:
 - `UNIQUE (gtin) WHERE gtin IS NOT NULL`.
 - `CHECK (gtin ~ '^[0-9]{14}$')`.
 
-Índices: `(category_id)`, `(status)`, y búsqueda por texto sobre `name` y `brand` con `pg_trgm` + `unaccent`.
+Indexes: `(category_id)`, `(status)`, and text search over `name` and `brand` with `pg_trgm` + `unaccent`.
 
-Un producto sin código de barras es válido (artículos a granel o sin GTIN). Se identifica entonces por id.
+A product without a barcode is valid (bulk items or items without a GTIN). It is then identified by id.
 
 ### 3.8 `tenant_products`
-Un producto global tal como lo ofrece un negocio: lo que el negocio pone de su parte.
+A global product as offered by a business: what the business contributes.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
 | `tenant_id` | uuid FK → tenants | |
 | `global_product_id` | uuid FK → global_products | |
-| `sku` | text null | SKU propio del negocio |
+| `sku` | text null | The business's own SKU |
 | `price` | numeric(12,2) | `CHECK (price >= 0)` |
-| `alt_name` | text null | Nombre alterno que prevalece en el catálogo del negocio |
-| `is_visible` | boolean | Por defecto `true`. Controla si aparece en el catálogo público |
-| `is_active` | boolean | Por defecto `true`. `false` = archivado (sustituye a borrar) |
+| `alt_name` | text null | Alternative name that takes precedence in the business's catalog |
+| `is_visible` | boolean | Default `true`. Controls whether it appears in the public catalog |
+| `is_active` | boolean | Default `true`. `false` = archived (replaces deletion) |
 | `created_at`, `updated_at` | timestamptz | |
 
-Restricciones:
-- `UNIQUE (tenant_id, global_product_id)`: un negocio no repite el mismo producto.
+Constraints:
+- `UNIQUE (tenant_id, global_product_id)`: a business does not repeat the same product.
 - `UNIQUE (tenant_id, sku) WHERE sku IS NOT NULL`.
-- `UNIQUE (tenant_id, id)`: habilita las llaves foráneas compuestas de stock (ver 3.9 y 3.10).
+- `UNIQUE (tenant_id, id)`: enables the composite foreign keys from stock (see 3.9 and 3.10).
 
-Índices: `(tenant_id, is_active, is_visible)`.
+Indexes: `(tenant_id, is_active, is_visible)`.
 
 ### 3.9 `stock_levels`
-Existencia actual por producto del tenant. Una fila por `tenant_products`, creada junto con él en `0`.
+Current stock per tenant product. One row per `tenant_products`, created together with it at `0`.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `tenant_product_id` | uuid PK | |
 | `tenant_id` | uuid | |
 | `quantity` | integer | `CHECK (quantity >= 0)` |
 | `updated_at` | timestamptz | |
 
-FK compuesta: `(tenant_id, tenant_product_id) → tenant_products (tenant_id, id)`. Así es imposible que el nivel apunte a un producto de otro tenant.
+Composite FK: `(tenant_id, tenant_product_id) → tenant_products (tenant_id, id)`. This makes it impossible for a level to point to another tenant's product.
 
 ### 3.10 `stock_movements`
-Ledger **append-only** de cambios de existencia.
+**Append-only** ledger of stock changes.
 
-| Columna | Tipo | Notas |
-|---------|------|-------|
+| Column | Type | Notes |
+|--------|------|-------|
 | `id` | uuid PK | |
 | `tenant_id` | uuid | |
 | `tenant_product_id` | uuid | |
 | `type` | enum `in` \| `out` \| `adjustment` | |
-| `delta` | integer | Con signo. Entrada positiva, salida negativa |
-| `quantity_after` | integer | Existencia resultante, para auditoría |
-| `reason` | text null | Obligatorio en `adjustment` (merma, conteo, error) |
-| `reference` | text null | Reservado: más adelante apuntará a una venta |
-| `client_request_id` | uuid null | Idempotencia: evita duplicar un escaneo reenviado |
+| `delta` | integer | Signed. Positive for in, negative for out |
+| `quantity_after` | integer | Resulting stock, for auditing |
+| `reason` | text null | Required for `adjustment` (shrinkage, count, error) |
+| `reference` | text null | Reserved: will later point to a sale |
+| `client_request_id` | uuid null | Idempotency: prevents duplicating a resent scan |
 | `created_by` | uuid FK → users | |
 | `created_at` | timestamptz | |
 
-Restricciones:
+Constraints:
 - `CHECK (delta <> 0)`.
 - `CHECK ((type = 'in' AND delta > 0) OR (type = 'out' AND delta < 0) OR type = 'adjustment')`.
 - `CHECK (type <> 'adjustment' OR reason IS NOT NULL)`.
 - `CHECK (quantity_after >= 0)`.
 - `UNIQUE (tenant_id, client_request_id) WHERE client_request_id IS NOT NULL`.
-- FK compuesta `(tenant_id, tenant_product_id) → tenant_products (tenant_id, id)`.
+- Composite FK `(tenant_id, tenant_product_id) → tenant_products (tenant_id, id)`.
 
-Índice: `(tenant_id, tenant_product_id, created_at DESC)`.
-A nivel de base de datos se recomienda un trigger o permisos que impidan `UPDATE` y `DELETE` sobre esta tabla.
-
----
-
-## 4. Normalización del GTIN
-
-Los lectores devuelven EAN-13, UPC-A (12), EAN-8 (8) o GTIN-14. Para que el mismo producto no se duplique:
-
-1. Quitar espacios y caracteres no numéricos.
-2. Aceptar solo longitudes 8, 12, 13 o 14.
-3. Validar el dígito verificador (módulo 10 de GS1).
-4. Rellenar con ceros a la izquierda hasta 14 dígitos.
-
-Se guarda siempre la forma de 14 dígitos. La búsqueda por escaneo aplica la misma función antes de consultar. Esta lógica vive en un módulo puro (`shared/gtin.ts`) con pruebas unitarias; el front puede reutilizar la misma validación.
+Index: `(tenant_id, tenant_product_id, created_at DESC)`.
+At the database level, a trigger or permissions that prevent `UPDATE` and `DELETE` on this table are recommended.
 
 ---
 
-## 5. Reglas e invariantes
+## 4. GTIN normalization
 
-### Aislamiento
-1. Toda consulta sobre tablas por tenant incluye `tenant_id` tomado de la sesión, nunca del cliente.
-2. Las llaves foráneas compuestas impiden mezclar tenants entre productos, niveles y movimientos.
-3. Los repositorios son la única vía de acceso a datos por tenant.
+Scanners return EAN-13, UPC-A (12), EAN-8 (8) or GTIN-14. So that the same product is not duplicated:
 
-### Catálogo global
-4. Los tenants no editan `global_products`. Solo crean nuevos (en `pending`).
-5. **Búsqueda por GTIN exacto** (flujo de escaneo): devuelve el producto en estado `pending` o `approved`, sin importar quién lo creó. Esto evita duplicados cuando dos negocios escanean el mismo código.
-6. **Exploración y búsqueda de texto** en el catálogo global: solo `approved`, más los `pending` creados por el propio tenant.
-7. Un producto `rejected` no se puede enlazar a nuevos `tenant_products`. Los ya enlazados dejan de mostrarse en el catálogo público.
-8. Solo un `platform_admin` cambia `status`.
+1. Strip spaces and non-numeric characters.
+2. Accept only lengths 8, 12, 13 or 14.
+3. Validate the check digit (GS1 modulo 10).
+4. Left-pad with zeros up to 14 digits.
 
-### Existencias
-9. Cada cambio de stock es un movimiento más la actualización de `stock_levels` en **la misma transacción**.
-10. El stock no puede quedar negativo; lo garantiza el `CHECK` de la base, no solo la aplicación.
-11. Los movimientos no se editan ni se borran. Un error se corrige con un movimiento `adjustment` con motivo.
-12. Un reintento con el mismo `client_request_id` devuelve el resultado original sin duplicar.
-
-### Catálogo público
-13. Solo muestra `tenant_products` con `is_active = true` e `is_visible = true`, cuyo producto global no esté `rejected`.
-14. La existencia se expone según `tenant_settings.show_exact_stock`: número exacto, o estado (`Disponible`, `Pocas piezas` si `quantity <= low_stock_threshold`, `Agotado` si es `0`).
-15. Nunca se expone costo, movimientos ni datos de usuarios.
+The 14-digit form is always stored. Scan lookups apply the same function before querying. This logic lives in a pure module (`shared/gtin.ts`) with unit tests; the frontend can reuse the same validation.
 
 ---
 
-## 6. Operación de stock (referencia de implementación)
+## 5. Rules and invariants
 
-Dentro de una transacción:
+### Isolation
+1. Every query on per-tenant tables includes the `tenant_id` taken from the session, never from the client.
+2. Composite foreign keys prevent mixing tenants across products, levels and movements.
+3. Repositories are the only way to access per-tenant data.
+
+### Global catalog
+4. Tenants do not edit `global_products`. They only create new ones (as `pending`).
+5. **Exact GTIN lookup** (scan flow): returns the product in `pending` or `approved` status, regardless of who created it. This avoids duplicates when two businesses scan the same code.
+6. **Browsing and text search** in the global catalog: only `approved`, plus the `pending` ones created by the tenant itself.
+7. A `rejected` product cannot be linked to new `tenant_products`. Those already linked stop showing in the public catalog.
+8. Only a `platform_admin` changes `status`.
+
+### Stock
+9. Every stock change is a movement plus the update of `stock_levels` in **the same transaction**.
+10. Stock cannot go negative; the database `CHECK` guarantees it, not just the application.
+11. Movements are not edited or deleted. A mistake is corrected with an `adjustment` movement with a reason.
+12. A retry with the same `client_request_id` returns the original result without duplicating.
+
+### Public catalog
+13. Only shows `tenant_products` with `is_active = true` and `is_visible = true` whose global product is not `rejected`.
+14. Stock is exposed according to `tenant_settings.show_exact_stock`: the exact number, or a status (`in_stock`, `low_stock` if `quantity <= low_stock_threshold`, `out_of_stock` if it is `0`). The frontend renders the Spanish labels.
+15. Cost, movements and user data are never exposed.
+
+---
+
+## 6. Stock operation (implementation reference)
+
+Inside a transaction:
 
 ```ts
 // registerMovement(tx, { tenantId, tenantProductId, type, delta, reason, clientRequestId, userId })
-// 1. Idempotencia: si existe (tenant_id, client_request_id), devolver el movimiento existente.
-// 2. Actualizar el nivel con bloqueo implícito de fila:
+// 1. Idempotency: if (tenant_id, client_request_id) exists, return the existing movement.
+// 2. Update the level with an implicit row lock:
 //      UPDATE stock_levels
 //         SET quantity = quantity + :delta, updated_at = now()
 //       WHERE tenant_id = :tenantId AND tenant_product_id = :tenantProductId
 //   RETURNING quantity;
-//    - Si no devuelve fila: el producto no pertenece al tenant -> error 404.
-//    - Si viola CHECK (quantity >= 0): stock insuficiente -> error 409.
-// 3. INSERT INTO stock_movements (..., delta, quantity_after = quantity devuelta, ...).
+//    - If no row is returned: the product does not belong to the tenant -> 404 error.
+//    - If CHECK (quantity >= 0) is violated: insufficient stock -> 409 error.
+// 3. INSERT INTO stock_movements (..., delta, quantity_after = returned quantity, ...).
 ```
 
-Ventajas: un único `UPDATE` atómico evita la condición de carrera de leer y luego escribir, y el `CHECK` protege aunque el código falle.
+Advantages: a single atomic `UPDATE` avoids the read-then-write race condition, and the `CHECK` protects even if the code fails.
 
 ---
 
-## 7. Flujos principales
+## 7. Main flows
 
-### 7.1 Alta por escaneo
-1. Front envía el código leído a `GET /api/admin/catalog/lookup?gtin=...`.
-2. Backend normaliza y valida el GTIN.
-3. **Existe en global:**
-   - Si el tenant ya tiene `tenant_product`: devolverlo para sumar existencias.
-   - Si no: pedir precio y cantidad; crear `tenant_product`, `stock_level` en 0 y movimiento `in`.
-4. **No existe:** formulario corto (nombre, marca, presentación, categoría, foto). Crear `global_product` en `pending` y continuar como en el punto 3.
+### 7.1 Entry by scan
+1. The frontend sends the scanned code to `GET /api/admin/catalog/lookup?gtin=...`.
+2. The backend normalizes and validates the GTIN.
+3. **Exists in global:**
+   - If the tenant already has the `tenant_product`: return it to add stock.
+   - Otherwise: ask for price and quantity; create the `tenant_product`, the `stock_level` at 0 and an `in` movement.
+4. **Does not exist:** short form (name, brand, presentation, category, photo). Create the `global_product` as `pending` and continue as in step 3.
 
-### 7.2 Ajuste manual
-Edición de existencias: el dueño indica la nueva cantidad o el delta y un motivo; se registra como `adjustment`.
+### 7.2 Manual adjustment
+Stock editing: the owner enters the new quantity or the delta and a reason; it is recorded as an `adjustment`.
 
-### 7.3 Aprobación
-Un `platform_admin` revisa los `pending`, puede corregir nombre, marca o categoría, y los pasa a `approved` o `rejected`.
-
----
-
-## 8. Consultas clave y sus índices
-
-| Consulta | Índice que la sirve |
-|----------|---------------------|
-| Resolver tenant por slug (login y catálogo) | `UNIQUE (slug)` |
-| Escaneo por GTIN | `UNIQUE (gtin)` parcial |
-| Listado de inventario del tenant | `(tenant_id, is_active, is_visible)` en `tenant_products` |
-| Catálogo público con filtro de categoría | `tenant_products` + `global_products(category_id)` |
-| Búsqueda de texto | GIN `pg_trgm` sobre `name` y `brand` |
-| Historial de un producto | `(tenant_id, tenant_product_id, created_at DESC)` en `stock_movements` |
-| Limpieza de sesiones | `(expires_at)` |
-
-Extensiones requeridas: `pgcrypto` (o `gen_random_uuid()` nativo en Postgres 13+), `pg_trgm`, `unaccent`.
+### 7.3 Approval
+A `platform_admin` reviews the `pending` products, can correct name, brand or category, and moves them to `approved` or `rejected`.
 
 ---
 
-## 9. Previsto para fases posteriores (no se implementa ahora)
+## 8. Key queries and their indexes
 
-- **Punto de venta:** tablas `sales` y `sale_items`; cada venta genera movimientos `out` con `reference` apuntando a la venta. `stock_movements` ya lo soporta sin cambios.
-- **Ecommerce:** `customers`, `carts`, `orders`, pagos. Evitar usar ya el nombre `orders` para otra cosa.
-- **Roles:** agregar `staff` al enum de `users.role` con permisos limitados (capturar stock sin editar precios).
-- **Lotes y caducidad:** si algún día se requieren, se agrega `stock_lots` y `stock_movements` pasa a referenciar lote. Decisión explícita de no hacerlo ahora.
-- **Precio por tenant con histórico:** `tenant_product_prices` si se necesita historial.
+| Query | Index that serves it |
+|-------|----------------------|
+| Resolve tenant by slug (login and catalog) | `UNIQUE (slug)` |
+| Scan by GTIN | Partial `UNIQUE (gtin)` |
+| Tenant inventory list | `(tenant_id, is_active, is_visible)` on `tenant_products` |
+| Public catalog with category filter | `tenant_products` + `global_products(category_id)` |
+| Text search | GIN `pg_trgm` over `name` and `brand` |
+| Product history | `(tenant_id, tenant_product_id, created_at DESC)` on `stock_movements` |
+| Session cleanup | `(expires_at)` |
+
+Required extensions: `pgcrypto` (or native `gen_random_uuid()` in Postgres 13+), `pg_trgm`, `unaccent`.
 
 ---
 
-## 10. Preguntas abiertas
+## 9. Planned for later phases (not implemented now)
 
-| # | Pregunta | Impacto |
-|---|----------|---------|
-| 1 | ~~¿Dónde se almacenan logos e imágenes?~~ **Resuelta:** Cloudflare R2. La base guarda la URL pública; claves `tenants/{tenantId}/logo.webp` y `products/{globalProductId}.webp` | Ninguno pendiente |
-| 2 | ¿La interfaz de administración de plataforma entra en el MVP o se aprueba por script? | Alcance de fase 2 |
-| 3 | ¿RLS de Postgres además de las llaves compuestas? | Ver ADR de multi-tenancy |
-| 4 | ¿Se permite un producto sin GTIN en el flujo de escaneo? | Hoy se permite en el modelo; falta definir la UX |
+- **Point of sale:** `sales` and `sale_items` tables; each sale generates `out` movements with `reference` pointing to the sale. `stock_movements` already supports it without changes.
+- **Ecommerce:** `customers`, `carts`, `orders`, payments. Avoid using the name `orders` for anything else now.
+- **Roles:** add `staff` to the `users.role` enum with limited permissions (record stock without editing prices).
+- **Lots and expiration dates:** if ever required, add `stock_lots` and make `stock_movements` reference a lot. Explicit decision not to do it now.
+- **Per-tenant price history:** `tenant_product_prices` if history is needed.
+
+---
+
+## 10. Open questions
+
+| # | Question | Impact |
+|---|----------|--------|
+| 1 | ~~Where are logos and images stored?~~ **Resolved:** Cloudflare R2. The database stores the public URL; keys `tenants/{tenantId}/logo.webp` and `products/{globalProductId}.webp` | Nothing pending |
+| 2 | Is the platform administration interface part of the MVP, or is approval done by script? | Phase 2 scope |
+| 3 | Postgres RLS in addition to the composite keys? | See multi-tenancy ADR |
+| 4 | Is a product without a GTIN allowed in the scan flow? | Allowed in the model today; UX still to be defined |
+| 5 | ~~Category names are user-visible data stored in the database: are they seeded in Spanish, or translated in the frontend by `slug`?~~ **Resolved:** English `name` and stable English `slug`, seeded in English only; the frontend translates by `slug` from its messages file, falling back to `name` | Nothing pending |

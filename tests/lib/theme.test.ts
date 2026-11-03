@@ -2,18 +2,18 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_COLORS, themeToCssVars } from "@/lib/theme/theme";
 
 describe("themeToCssVars", () => {
-  it("convierte la paleta en variables CSS", () => {
+  it("converts the palette into CSS variables", () => {
     const vars = themeToCssVars({ ...DEFAULT_COLORS, primary: "#ff0000" });
     expect(vars["--color-primary"]).toBe("#ff0000");
     expect(vars["--color-text"]).toBe(DEFAULT_COLORS.text);
   });
 
-  it("usa el valor por defecto si falta un color", () => {
+  it("uses the default when a color is missing", () => {
     const vars = themeToCssVars({});
     expect(vars["--color-primary"]).toBe(DEFAULT_COLORS.primary);
   });
 
-  it("descarta valores que no son hex estricto (evita inyección de estilos)", () => {
+  it("discards values that are not strict hex (prevents style injection)", () => {
     const vars = themeToCssVars({
       primary: "red; background: url(https://evil.example)",
       accent: "#fff",

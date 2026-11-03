@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
-// El navegador siempre llama a /api/* en el mismo origen del front;
-// Next lo reenvía al backend. Así la cookie de sesión pertenece al dominio del front.
-// BACKEND_URL debe estar disponible también en tiempo de build (los rewrites se fijan ahí).
+// The browser always calls /api/* on the frontend's own origin;
+// Next forwards it to the backend, so the session cookie belongs to the frontend domain.
+// BACKEND_URL must also be available at build time (rewrites are fixed then).
 const backendUrl = process.env.BACKEND_URL ?? "http://localhost:3001";
 
 const nextConfig: NextConfig = {

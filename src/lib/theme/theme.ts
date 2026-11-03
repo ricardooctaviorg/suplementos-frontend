@@ -17,9 +17,9 @@ export const DEFAULT_COLORS: TenantColors = {
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 /**
- * Convierte la paleta del tenant en variables CSS para el atributo `style`.
- * Valida cada color contra hex estricto (evita inyección de estilos);
- * si un valor no es válido se usa el color por defecto.
+ * Converts the tenant palette into CSS variables for the `style` attribute.
+ * Each color is validated as strict hex (prevents style injection);
+ * invalid values fall back to the default color.
  */
 export function themeToCssVars(colors: Partial<TenantColors>): Record<string, string> {
   const pick = (value: string | undefined, fallback: string) =>

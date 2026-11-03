@@ -1,7 +1,7 @@
 /**
- * Validación y normalización de GTIN (EAN-8, UPC-A, EAN-13, GTIN-14).
- * Todo código se envía y se consulta en su forma de 14 dígitos.
- * Mantener sincronizado con `src/shared/gtin.ts` del backend.
+ * GTIN validation and normalization (EAN-8, UPC-A, EAN-13, GTIN-14).
+ * Every code is sent and looked up in its 14-digit form.
+ * Keep in sync with the backend's `src/shared/gtin.ts`.
  */
 
 const VALID_LENGTHS = [8, 12, 13, 14];
@@ -20,7 +20,7 @@ function hasValidCheckDigit(digits: string): boolean {
   return (10 - (sum % 10)) % 10 === checkDigit;
 }
 
-/** Devuelve el GTIN normalizado a 14 dígitos, o `null` si no es válido. */
+/** Returns the GTIN normalized to 14 digits, or `null` if it is invalid. */
 export function normalizeGtin(raw: string): string | null {
   if (/[^\d\s-]/.test(raw)) return null;
   const digits = raw.replace(/[\s-]/g, "");

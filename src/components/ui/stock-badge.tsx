@@ -1,21 +1,17 @@
-export type StockStatus = "available" | "low" | "out";
+import { es } from "@/messages/es";
 
-const LABELS: Record<StockStatus, string> = {
-  available: "Disponible",
-  low: "Pocas piezas",
-  out: "Agotado",
-};
+export type StockStatus = "available" | "low" | "out";
 
 interface StockBadgeProps {
   status: StockStatus;
-  /** Solo se muestra si el negocio decidió exponer la existencia exacta. */
+  /** Only shown if the business chose to expose the exact stock quantity. */
   quantity?: number;
 }
 
 export function StockBadge({ status, quantity }: StockBadgeProps) {
   return (
     <span data-status={status}>
-      {LABELS[status]}
+      {es.stock[status]}
       {quantity !== undefined && status !== "out" ? ` (${quantity})` : ""}
     </span>
   );

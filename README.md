@@ -1,39 +1,41 @@
 # suplementos-frontend
 
-Next.js (App Router) con tres zonas: login, panel de gestión por tenant y catálogo público de existencias.
+Next.js (App Router) app with three zones: login, per-tenant management dashboard and public stock catalog.
 
-Documentación del proyecto: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y [`docs/DOMAIN-MODEL.md`](docs/DOMAIN-MODEL.md). Reglas para Claude Code: [`CLAUDE.md`](CLAUDE.md).
+Project documentation: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DOMAIN-MODEL.md`](docs/DOMAIN-MODEL.md). Rules for Claude Code: [`CLAUDE.md`](CLAUDE.md).
 
-## Arranque rápido
+Language: code, comments, docs and commits are in English. User-facing UI text is in Spanish and lives only in [`src/messages/`](src/messages/).
+
+## Quick start
 
 ```bash
-nvm use                      # Node 24 (ver .nvmrc)
+nvm use                      # Node 24 (see .nvmrc)
 npm install
 cp .env.example .env.local
 npm run dev                  # http://localhost:3000
 ```
 
-El backend (`suplementos-backend`) debe estar corriendo en `http://localhost:3001`. Verifica el proxy de mismo origen:
+The backend (`suplementos-backend`) must be running at `http://localhost:3001`. Check the same-origin proxy:
 
 ```bash
-curl http://localhost:3000/api/health    # {"status":"ok"} (lo responde el backend)
+curl http://localhost:3000/api/health    # {"status":"ok"} (answered by the backend)
 ```
 
-## Comandos
+## Commands
 
-| Comando | Qué hace |
-|---------|----------|
-| `npm run dev` | Servidor de desarrollo |
-| `npm run build` / `npm start` | Build y servicio de producción |
-| `npm test` / `npm run test:watch` | Pruebas (Vitest + Testing Library) |
-| `npm run typecheck` | Genera tipos de rutas y verifica tipos |
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build and server |
+| `npm test` / `npm run test:watch` | Tests (Vitest + Testing Library) |
+| `npm run typecheck` | Generates route types and checks types |
 | `npm run lint` | ESLint |
 
-## Rutas
+## Routes
 
-| Ruta | Zona |
-|------|------|
-| `/` | Inicio |
-| `/login` | Login (paso 1: negocio, paso 2: credenciales) |
-| `/app` | Panel del tenant (requiere sesión) |
-| `/catalogo/[slug]` | Catálogo público del negocio |
+| Route | Zone |
+|-------|------|
+| `/` | Home |
+| `/login` | Login (step 1: business, step 2: credentials) |
+| `/app` | Tenant dashboard (requires a session) |
+| `/catalog/[slug]` | The business's public catalog |

@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { es } from "@/messages/es";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Suplementos",
-    template: "%s | Suplementos",
+    default: es.app.name,
+    template: `%s | ${es.app.name}`,
   },
-  description: "Gestión de inventario y catálogo de suplementos para negocios locales.",
+  description: es.app.description,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

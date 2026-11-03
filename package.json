@@ -32,7 +32,7 @@
     "typescript": "^5",
     "vitest": "^5.1.0"
   },
-  "description": "Panel de gestión, login y catálogo público de existencias",
+  "description": "Management dashboard, login and public stock catalog",
   "engines": {
     "node": ">=22"
   }
