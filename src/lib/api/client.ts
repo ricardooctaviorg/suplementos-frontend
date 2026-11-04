@@ -31,7 +31,9 @@ interface ErrorBody {
   error?: { code?: string; message?: string };
 }
 
-export interface ApiFetchInit extends RequestInit {
+export interface ApiFetchInit extends Omit<RequestInit, "headers"> {
+  /** Plain object so wrappers (for example, server cookie forwarding) can merge headers safely. */
+  headers?: Record<string, string>;
   /** JSON request body; serialized and sent with `Content-Type: application/json`. */
   json?: unknown;
 }

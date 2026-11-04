@@ -70,6 +70,11 @@ tests/                             # mirrors the structure of src/
 - Server-side calls (SSR, server components) use `BACKEND_URL` directly, preferably over Railway's private network.
 - Never store session tokens in `localStorage`; the session is the `httpOnly` cookie set by the backend.
 
+### Session in the dashboard
+- `(dashboard)/app/layout.tsx` verifies the session (`getCurrentSession()` in `lib/session.ts`) and redirects to `/login` on 401. That is not enough on its own: a layout does not stop child segments from rendering into the RSC payload (see the Next authentication guide, "Layouts and auth checks").
+- Every page under `/app` and every server data access calls `getCurrentSession()` itself, inside a `<Suspense>` boundary. It is deduplicated per request with `React.cache`, so it costs a single `GET /api/auth/me`.
+- The session is never cached (`serverApiFetch` uses `cache: "no-store"`) and never stored on the client.
+
 ### Tenant
 - In the dashboard, the tenant comes from the session. In the public catalog, from the URL `slug`.
 - Never build or send a `tenant_id` from the client. The frontend does not decide isolation; it only respects it.
@@ -124,6 +129,13 @@ tests/                             # mirrors the structure of src/
 - Test behavior visible to the user, not implementation details.
 - Playwright later, for the scan → register → see in public catalog flow.
 - A new feature includes its tests in the same change.
+- Server modules that read `cookies()` run in the `node` environment (`// @vitest-environment node`) with `next/headers` mocked; `server-only` is aliased in `vitest.config.mts`.
+
+### Pending for E2E (async server components, not covered by Vitest)
+
+- `/login/[slug]`: resolves the tenant on the server, applies its palette and redirects to `/login` for unknown, suspended or malformed slugs.
+- `(dashboard)/app/layout.tsx`: the session guard (`GET /api/auth/me` forwarding the request cookie) redirects to `/login` on 401 and shows the user and tenant names.
+- Full flow: slug → credentials → `/app` → logout → `/login`, and `/app` without a session redirects to `/login`.
 
 ## Environment variables
 

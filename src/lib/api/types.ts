@@ -11,3 +11,23 @@ export interface PublicTenant {
   logoUrl: string | null;
   colors: TenantColors;
 }
+
+/** `user` in `POST /api/auth/login` and `GET /api/auth/me` */
+export interface SessionUser {
+  email: string;
+  name: string;
+  role: "owner";
+}
+
+/** `POST /api/auth/login` and `GET /api/auth/me` */
+export interface SessionInfo {
+  user: SessionUser;
+  tenant: { slug: string; displayName: string };
+}
+
+/** `POST /api/auth/login` body */
+export interface LoginInput {
+  tenantSlug: string;
+  email: string;
+  password: string;
+}

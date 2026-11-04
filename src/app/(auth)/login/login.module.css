@@ -3,3 +3,10 @@
   margin: 0 auto;
   padding: 4rem 1rem;
 }
+
+/* Tenant zone root: the tenant palette is injected here as CSS variables. */
+.zone {
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-text);
+}

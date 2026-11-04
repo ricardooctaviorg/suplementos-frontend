@@ -43,11 +43,31 @@ export interface Messages {
         invalidFormat: string;
       };
     };
+    credentialsStep: {
+      loading: string;
+      instructions: string;
+      emailLabel: string;
+      passwordLabel: string;
+      submit: string;
+      submitting: string;
+      changeTenant: string;
+      errors: {
+        emailRequired: string;
+        emailInvalid: string;
+        passwordRequired: string;
+        passwordTooLong: string;
+      };
+    };
   };
   dashboard: {
     title: string;
     heading: string;
     underConstruction: string;
+    loadingSession: string;
+    userLabel: string;
+    tenantLabel: string;
+    logout: string;
+    loggingOut: string;
   };
   catalog: {
     title: string;
@@ -87,11 +107,31 @@ export const es: Messages = {
           "El identificador solo puede tener letras minúsculas, números y guiones entre ellos, y medir de 3 a 40 caracteres.",
       },
     },
+    credentialsStep: {
+      loading: "Cargando negocio…",
+      instructions: "Inicia sesión con tu correo y contraseña.",
+      emailLabel: "Correo electrónico",
+      passwordLabel: "Contraseña",
+      submit: "Iniciar sesión",
+      submitting: "Iniciando sesión…",
+      changeTenant: "Cambiar de negocio",
+      errors: {
+        emailRequired: "Escribe tu correo electrónico.",
+        emailInvalid: "Escribe un correo electrónico válido, por ejemplo nombre@correo.com.",
+        passwordRequired: "Escribe tu contraseña.",
+        passwordTooLong: "La contraseña no puede tener más de 128 caracteres.",
+      },
+    },
   },
   dashboard: {
     title: "Panel",
     heading: "Panel de gestión",
     underConstruction: "En construcción (fases 1 y 2).",
+    loadingSession: "Verificando tu sesión…",
+    userLabel: "Usuario",
+    tenantLabel: "Negocio",
+    logout: "Cerrar sesión",
+    loggingOut: "Cerrando sesión…",
   },
   catalog: {
     title: "Catálogo",
