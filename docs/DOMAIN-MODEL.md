@@ -54,7 +54,7 @@ A client business.
 | `created_at`, `updated_at` | timestamptz | |
 
 Constraints: `UNIQUE (slug)`, `CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')`, `CHECK (char_length(slug) BETWEEN 3 AND 40)`.
-List of reserved slugs (`app`, `api`, `admin`, `login`, `catalog`, `www`...) validated in the application layer.
+Reserved slugs, validated in the application layer (`src/modules/tenants/slug.ts`): `admin`, `api`, `app`, `auth`, `catalog`, `dashboard`, `internal`, `login`, `public`, `static`, `www`.
 
 ### 3.2 `tenant_settings`
 Customization and visual identity. 1:1 relationship with `tenants`.

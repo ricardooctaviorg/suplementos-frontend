@@ -117,9 +117,13 @@ The dashboard and the catalog share the design system, per-tenant theming and th
 - **In-house auth**, encapsulated in a module (`auth`) so it can be migrated to a provider later.
 - Flow: `/login` asks for the tenant slug → email and password screen → session.
 - Passwords with **argon2id**.
-- Server-side session (`sessions` table in Postgres) with an `httpOnly`, `secure`, `sameSite=lax` cookie. Avoids JWT to keep revocation simple.
+- Server-side session (`sessions` table in Postgres) with an `httpOnly`, `sameSite=lax` cookie that is `secure` in production. Avoids JWT to keep revocation simple.
+- Session token: 32 random bytes (base64url) in a signed cookie named `session`; the database stores only its SHA-256 hash (`sessions.id`). Absolute expiration of 7 days.
+- Every authenticated request re-checks that the session has not expired, the user is active and the tenant is `active`, so suspending a tenant ends its sessions immediately.
+- Changing the password requires the current one and ends every other session of the user.
+- Tenants are provisioned with `npm run tenant:create` until there is a platform administration interface.
 - A single role in the MVP: tenant **owner**.
-- Basic protection: rate limiting on login (`@fastify/rate-limit`) and generic error messages.
+- Basic protection: rate limiting on login and password change (`@fastify/rate-limit`, per IP and per account) and generic error messages.
 - The public catalog does not require authentication.
 
 ---
@@ -174,6 +178,42 @@ Frontend and API live on different domains in Railway, and `sameSite=lax` cookie
 - Three zones: `/api/auth/*`, `/api/admin/*` (requires a session) and `/api/public/*` (no session).
 - Zod validation on every route; schemas are the source of the types.
 - Uniform error format: `{ "error": { "code": "...", "message": "..." } }`. The `code` is the stable contract; the `message` is in English and is not meant to be shown to end users (the frontend maps `code` to Spanish UI text).
+- Only JSON bodies are accepted; other content types get `415 UNSUPPORTED_MEDIA_TYPE`.
+- In `/api/admin/*` the tenant always comes from the session. A `tenantId` sent in the body, query or headers is ignored.
+
+### Endpoints
+
+| Method and path | Session | Success | Errors |
+|-----------------|---------|---------|--------|
+| `GET /api/public/tenants/:slug` | no | `200 { slug, displayName, logoUrl, colors }` | `404 TENANT_NOT_FOUND` (unknown and suspended tenants answer the same) |
+| `POST /api/auth/login` `{ tenantSlug, email, password }` | no | `200 { user, tenant }` and session cookie | `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`, `429 RATE_LIMITED` |
+| `POST /api/auth/logout` | optional | `204`, deletes the session if valid and clears the cookie (idempotent) | — |
+| `GET /api/auth/me` | yes | `200 { user, tenant }` | `401 UNAUTHORIZED` |
+| `POST /api/auth/change-password` `{ currentPassword, newPassword }` | yes | `204`, ends the user's other sessions | `400 VALIDATION_ERROR`, `400 INVALID_CURRENT_PASSWORD`, `401 UNAUTHORIZED`, `429 RATE_LIMITED` |
+| `GET /api/admin/settings` | yes | `200` settings of the session's tenant | `401 UNAUTHORIZED` |
+| `PATCH /api/admin/settings` (partial: `displayName`, `colors`, `contactPhone`, `address`, `showExactStock`, `lowStockThreshold`) | yes | `200` updated settings | `400 VALIDATION_ERROR` (including an empty body), `401 UNAUTHORIZED` |
+
+`user` is `{ email, name, role }` and `tenant` is `{ slug, displayName }`. Colors are strict `#RRGGBB`; `lowStockThreshold` is an integer `>= 0`. Passwords are 12 to 128 characters; the login password is only required to be non-empty and at most 128 characters.
+
+### Error codes
+
+| Code | Status | Meaning |
+|------|--------|---------|
+| `VALIDATION_ERROR` | 400 | The body, query or params do not match the schema |
+| `BAD_REQUEST` | 400 | Malformed request (for example, invalid JSON) |
+| `INVALID_CURRENT_PASSWORD` | 400 | `change-password` with a wrong current password |
+| `INVALID_CREDENTIALS` | 401 | Any login failure: unknown or suspended tenant, unknown or inactive user, wrong password. Same message and similar timing in every case |
+| `UNAUTHORIZED` | 401 | Missing, invalid, expired or revoked session |
+| `NOT_FOUND` | 404 | Unknown route or resource |
+| `TENANT_NOT_FOUND` | 404 | Public tenant resolution failed |
+| `CONFLICT` | 409 | The change conflicts with existing data (for example, a taken tenant slug) |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | The body is not JSON |
+| `RATE_LIMITED` | 429 | Too many attempts; the response includes `Retry-After` |
+| `INTERNAL_ERROR` | 500 | Unexpected error; details are only logged |
+
+### Rate limits
+
+Windows of 15 minutes. Login: 20 per IP and 10 per `tenantSlug + email`. Password change: 10 per IP and 5 per user. Every attempt counts, successful or not.
 - Pagination with `page` and `pageSize`, with a maximum cap.
 - Versioning: no version prefix for now; `/v1` is introduced if there are external clients.
 
