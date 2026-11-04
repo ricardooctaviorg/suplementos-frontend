@@ -31,10 +31,25 @@ interface ErrorBody {
   error?: { code?: string; message?: string };
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export interface ApiFetchInit extends RequestInit {
+  /** JSON request body; serialized and sent with `Content-Type: application/json`. */
+  json?: unknown;
+}
+
+/**
+ * Typed request to the API. Responses without content (204) resolve to `undefined`,
+ * so callers of such endpoints should use `apiFetch<void>`.
+ */
+export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
+  const { json, headers, ...rest } = init;
   const response = await fetch(resolveApiUrl(path), {
-    ...init,
-    headers: { Accept: "application/json", ...init.headers },
+    ...rest,
+    ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
+    headers: {
+      Accept: "application/json",
+      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...headers,
+    },
   });
 
   if (!response.ok) {
@@ -46,5 +61,14 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     );
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return (await response.json()) as T;
+}
+
+/** User-facing Spanish text for any error thrown by an API call (network failures included). */
+export function getErrorUserMessage(error: unknown): string {
+  return error instanceof ApiError ? error.userMessage : getApiErrorMessage("UNKNOWN_ERROR");
 }

@@ -5,6 +5,9 @@
   --color-background: #ffffff;
   --color-text: #0f172a;
 
+  /* Platform token (not part of the tenant palette): error text and borders. */
+  --color-danger: #b91c1c;
+
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 

@@ -6,9 +6,15 @@
 /** Error codes returned by the backend in `{ error: { code } }`, plus client-side codes. */
 export type ApiErrorCode =
   | "VALIDATION_ERROR"
+  | "BAD_REQUEST"
+  | "INVALID_CURRENT_PASSWORD"
+  | "INVALID_CREDENTIALS"
   | "UNAUTHORIZED"
   | "NOT_FOUND"
+  | "TENANT_NOT_FOUND"
   | "CONFLICT"
+  | "UNSUPPORTED_MEDIA_TYPE"
+  | "RATE_LIMITED"
   | "DB_UNAVAILABLE"
   | "INTERNAL_ERROR"
   | "UNKNOWN_ERROR";
@@ -26,8 +32,17 @@ export interface Messages {
   login: {
     title: string;
     heading: string;
-    instructions: string;
-    underConstruction: string;
+    tenantStep: {
+      instructions: string;
+      slugLabel: string;
+      slugHint: string;
+      submit: string;
+      submitting: string;
+      errors: {
+        required: string;
+        invalidFormat: string;
+      };
+    };
   };
   dashboard: {
     title: string;
@@ -60,8 +75,18 @@ export const es: Messages = {
   login: {
     title: "Iniciar sesión",
     heading: "Iniciar sesión",
-    instructions: "Paso 1: escribe el identificador de tu negocio. Paso 2: correo y contraseña.",
-    underConstruction: "En construcción (fase 1).",
+    tenantStep: {
+      instructions: "Escribe el identificador de tu negocio para continuar.",
+      slugLabel: "Identificador del negocio",
+      slugHint: "Letras minúsculas, números y guiones; de 3 a 40 caracteres. Ejemplo: mi-tienda.",
+      submit: "Continuar",
+      submitting: "Buscando negocio…",
+      errors: {
+        required: "Escribe el identificador de tu negocio.",
+        invalidFormat:
+          "El identificador solo puede tener letras minúsculas, números y guiones entre ellos, y medir de 3 a 40 caracteres.",
+      },
+    },
   },
   dashboard: {
     title: "Panel",
@@ -80,9 +105,15 @@ export const es: Messages = {
   },
   apiErrors: {
     VALIDATION_ERROR: "Revisa los datos e inténtalo de nuevo.",
+    BAD_REQUEST: "La solicitud no es válida. Inténtalo de nuevo.",
+    INVALID_CURRENT_PASSWORD: "La contraseña actual no es correcta.",
+    INVALID_CREDENTIALS: "No pudimos iniciar sesión con esos datos. Revisa el correo y la contraseña.",
     UNAUTHORIZED: "Tu sesión no es válida o expiró. Inicia sesión de nuevo.",
     NOT_FOUND: "No encontramos lo que buscas.",
+    TENANT_NOT_FOUND: "No encontramos un negocio con ese identificador.",
     CONFLICT: "La operación no se pudo completar porque los datos cambiaron. Actualiza e inténtalo de nuevo.",
+    UNSUPPORTED_MEDIA_TYPE: "La solicitud no es válida. Inténtalo de nuevo.",
+    RATE_LIMITED: "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.",
     DB_UNAVAILABLE: "El servicio no está disponible en este momento. Inténtalo más tarde.",
     INTERNAL_ERROR: "Ocurrió un error en el servidor. Inténtalo más tarde.",
     UNKNOWN_ERROR: "Ocurrió un error inesperado.",
